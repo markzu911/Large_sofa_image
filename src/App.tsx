@@ -90,7 +90,7 @@ const SHOT_PRESETS = [
     anchorX: 0.5,
     anchorY: 0.7,
     description: '相机后退到房间入口或对角线位置，完整看空间结构和沙发落位。',
-    promptGuide: '远景必须像摄影师把相机退到同一个房间的入口、走廊口或客厅对角线位置拍摄，而不是把沙发简单缩小。使用24-28mm广角、1.45-1.6米站立机位，轻微俯视或平视。沙发应完整入镜，宽度约占画面28%-38%，前后左右保留大量空间，能看到墙面、地面、地毯/茶几/电视墙/窗帘等环境关系。允许选择更利于商品展示的正面、侧面或45度斜侧，但必须保持原房间墙体、窗户、门洞、电视/媒体墙和固定柜体的相对位置不变。景深较深，背景清晰，重点是证明沙发在真实房间中落位合理。'
+    promptGuide: '远景必须先完成真实合理落位，再像摄影师把相机退到同一个房间的入口、走廊口或客厅对角线位置拍摄，而不是为了空间全貌把沙发移到画面中央或窗前。使用24-28mm广角、1.45-1.6米站立机位，轻微俯视或平视。沙发应尽量完整入镜，宽度约占画面28%-38%，前后左右保留大量空间，能看到墙面、地面、地毯/茶几/电视墙/窗帘等环境关系。必须保持原房间墙体、窗户、门洞、电视/媒体墙和固定柜体的相对位置不变，重点是证明沙发在真实房间中落位合理。'
   },
   {
     id: 'medium',
@@ -101,7 +101,7 @@ const SHOT_PRESETS = [
     anchorX: 0.5,
     anchorY: 0.66,
     description: '相机站在沙发前方约2-3米，主体清楚，仍保留地面和背景。',
-    promptGuide: '中景必须像摄影师在同一个房间内站到沙发前方约2-3米处拍摄，而不是裁切远景照片。使用35-50mm标准焦段、1.05-1.2米视平机位，可根据商品选择正面、侧面或35-45度斜侧构图。沙发宽度约占画面45%-58%，应基本完整入镜，底座和地面接触线必须完整可见，前方保留适当呼吸空间。背景允许轻微虚化但空间仍清楚，不能改变墙体、窗户、门洞、电视/媒体墙和固定柜体的原始关系，重点是电商主图质感、真实透视、沙发轮廓和材质。'
+    promptGuide: '中景必须先完成真实合理落位，再像摄影师在同一个房间内站到沙发前方约2-3米处拍摄，而不是为了电商主图把沙发挪到画面中心、窗前或电视墙前。使用35-50mm标准焦段、1.05-1.2米视平机位，可根据商品选择正面、侧面或35-45度斜侧构图。沙发宽度约占画面45%-58%，应基本完整入镜，底座和地面接触线必须完整可见，前方保留适当呼吸空间。背景允许轻微虚化但空间仍清楚，不能改变墙体、窗户、门洞、电视/媒体墙和固定柜体的原始关系。'
   },
   {
     id: 'close',
@@ -112,13 +112,14 @@ const SHOT_PRESETS = [
     anchorX: 0.52,
     anchorY: 0.7,
     description: '相机靠近沙发约0.8-1.4米，突出面料、扶手、坐垫和缝线。',
-    promptGuide: '近景必须像摄影师在同一个房间内把相机推进到沙发前约0.8-1.4米处拍摄，而不是把整张图放大。使用70-90mm中长焦、0.75-0.95米低位近摄机位，浅景深。画面可以自然裁切沙发的一部分，可选择正面、侧面或45度斜侧特写，重点拍扶手、坐垫、靠背、前沿、布纹/皮纹/缝线/褶皱，但必须保留一段地面接触边缘和接触阴影，证明沙发在真实房间地面上。背景明显虚化但仍能看出原房间结构，不能把电视墙、窗户或门洞换边。'
+    promptGuide: '近景必须先完成合理沙发落位，再像摄影师走近已经摆好的沙发拍局部材质，而不是把整张沙发放大塞满画面或重新选择背景。使用70-90mm中长焦、0.75-0.95米低位近摄机位，浅景深。画面应自然裁切沙发局部，重点拍扶手、坐垫、靠背前沿、缝线、褶皱、布纹/皮纹和接触阴影；不要求整张沙发完整入镜。背景只作为同一真实房间的虚化空间线索，不能为了近景把沙发挪到窗前、门口、电视墙前或房间中央。'
   }
 ] as const;
 
 const ROOM_STRUCTURE_GUIDE = '房间构造约束：房间参考图是唯一空间来源，必须锁定原房间墙体、窗户/窗帘、门洞、电视/媒体墙、固定柜体、吊顶/梁、地面纹理方向、空旷区域和整体空间比例；原沙发、单椅、边几、茶几、抱枕、地毯等可移动家具可以被商品合理替换或轻微调整，但不能重建、翻转、旋转或重排房间骨架，不能新增产品图里的整面柜墙/书架/灯具/门洞。';
 const PRODUCT_BACKGROUND_ISOLATION_GUIDE = '产品图隔离约束：产品参考图只用于提取沙发本体的款式、轮廓、比例、材质、颜色和纹理；必须完全忽略产品图里的房间背景、墙柜、书架、木饰面、吊顶灯带、厨房、门洞、窗户、落地灯、茶几、玩偶、地毯、装饰和地面材质，绝对不要把这些元素迁移到房间参考图。';
 const PLACEMENT_LOGIC_GUIDE = '沙发落位约束：生成前必须先识别电视/媒体墙、主背景墙、大窗/窗帘、门洞、固定柜体、地毯/茶几、原座位区和主要通道，再决定沙发位置；有电视/媒体墙时，沙发应落在其对侧或斜对侧的可用地面，座面朝向电视/媒体墙，长边与电视墙大致平行；如果电视在侧墙、大窗在后墙，禁止把大沙发横在窗前或房间中轴线挡住采光，应放到电视对侧的下方/侧方开阔地面并保留窗前通道。位置合理性优先于居中构图和预览锚点，不能挡住窗户主体、门洞、走道、电视墙或固定柜体。';
+const SHOT_CAMERA_LOGIC_GUIDE = '通用景别约束：远景、中景、近景都必须使用同一套空间决策流程：先锁定房间结构和最合理沙发落位，再只通过相机位置、焦段、机位高度、景深和裁切范围改变景别。绝不能为了远景全貌、中景主图或近景细节，把沙发重新挪到窗前、房间中央、门洞、电视墙前、柜体前或主要通道。远景是相机后退，不是把沙发随机居中；中景是相机靠近到主图距离，不是牺牲动线和房间结构；近景是靠近已落位沙发拍局部材质，可以自然裁切沙发，不要求完整入镜，也不能重新找背景。';
 const PRODUCT_VIEW_GUIDE = '商品视角约束：可以在同一个真实房间内移动机位，选择沙发正面、侧面或45度斜侧等更适合展示的角度；如果角度与房间结构或合理落位冲突，优先保持房间构造和沙发摆放逻辑正确。';
 
 const CHAT_WELCOME_ACTIONS: ChatAction[] = [
@@ -975,7 +976,7 @@ export default function App() {
         hasManualPlacement,
         placementX: hasManualPlacement ? sofaX : undefined,
         placementY: hasManualPlacement ? sofaY : undefined,
-        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_BACKGROUND_ISOLATION_GUIDE} ${PLACEMENT_LOGIC_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，${hasManualPlacement ? '用户拖动坐标只作为软参考，若不符合真实地面和动线必须自动修正。' : '当前没有用户手动落位坐标，不能使用画面中心默认点作为摆放依据。'}`
+        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_BACKGROUND_ISOLATION_GUIDE} ${PLACEMENT_LOGIC_GUIDE} ${SHOT_CAMERA_LOGIC_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，${hasManualPlacement ? '用户拖动坐标只作为软参考，若不符合真实地面和动线必须自动修正。' : '当前没有用户手动落位坐标，不能使用画面中心默认点作为摆放依据。'}`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -1018,13 +1019,13 @@ export default function App() {
         if (data.saveScheduled) {
           setPendingSaasImage(null);
           setPendingSaasSkipConsume(false);
-          setErrorMessage('图片已生成，可预览和下载；SaaS 图片库保存已由后端继续执行，避免大图二次上传导致 413。');
+          setErrorMessage(null);
           setActiveLogs(prev => [...prev, `[SaaS] 💾 已交给后端继续保存入库，不再从浏览器二次上传大图。`]);
         } else if (data.needsSaasSave || data.savedToSaas === false) {
           const skipConsume = didConsumeBeforeSaveFailure(data);
           setPendingSaasImage(data.image);
           setPendingSaasSkipConsume(skipConsume);
-          setErrorMessage('图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...');
+          setErrorMessage(null);
           setActiveLogs(prev => [...prev, `[SaaS] 💾 图片已显示，正在后台保存入库...`]);
           void saveResultToSaas(data.image, skipConsume).then((savedData) => {
             if (resultRunRef.current !== runId) return;
@@ -1116,7 +1117,7 @@ export default function App() {
     setSaasSaveRetrying(true);
     setPendingSaasImage(imageToSave);
     setPendingSaasSkipConsume(skipConsume);
-    setErrorMessage('正在重新保存到 SaaS 图片库...');
+    setErrorMessage(null);
     if (chatMessageId) {
       updateChatGeneration(chatMessageId, {
         note: '正在重新保存到 SaaS 图片库...',
@@ -1298,7 +1299,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_BACKGROUND_ISOLATION_GUIDE}\n${PLACEMENT_LOGIC_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、电视/媒体墙、大窗、门洞、固定柜体、地毯/茶几和通道关系，再把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、挡窗、挡电视、遮挡动线或悬浮。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_BACKGROUND_ISOLATION_GUIDE}\n${PLACEMENT_LOGIC_GUIDE}\n${SHOT_CAMERA_LOGIC_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小，更不能为了景别改变沙发落位或房间构造。\n落位要求：先识别房间真实地面、主墙、电视/媒体墙、大窗、门洞、固定柜体、地毯/茶几和通道关系，再把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、挡窗、挡电视、遮挡动线或悬浮。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
@@ -1341,7 +1342,7 @@ export default function App() {
           if (resultRunRef.current === runId) {
             setPendingSaasImage(null);
             setPendingSaasSkipConsume(false);
-            setErrorMessage('图片已生成，可预览和下载；SaaS 图片库保存已由后端继续执行，避免大图二次上传导致 413。');
+            setErrorMessage(null);
             setChatGenerating(false);
           }
         } else if (data.needsSaasSave || data.savedToSaas === false) {
@@ -1349,7 +1350,7 @@ export default function App() {
           if (resultRunRef.current === runId) {
             setPendingSaasImage(data.image);
             setPendingSaasSkipConsume(skipConsume);
-            setErrorMessage('图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...');
+            setErrorMessage(null);
             setChatGenerating(false);
           }
           void saveResultToSaas(data.image, skipConsume).then((savedData) => {
@@ -1883,7 +1884,7 @@ export default function App() {
             )}
           </div>
 
-          {/* System status banner */}
+          {/* Error/status banner */}
           <AnimatePresence>
             {errorMessage && (
               <motion.div
@@ -1894,7 +1895,7 @@ export default function App() {
               >
                 <AlertCircle className="w-4 h-4 text-[#B8975A] shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <span className="font-bold">系统提示:</span> {errorMessage}
+                  <span className="font-bold">异常提示:</span> {errorMessage}
                   {pendingSaasImage && resultImage && errorMessage.includes('失败') && (
                     <button
                       onClick={() => retrySaveCurrentResult()}
