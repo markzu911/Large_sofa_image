@@ -118,7 +118,8 @@ const SHOT_PRESETS = [
 
 const ROOM_STRUCTURE_GUIDE = '房间构造约束：房间参考图是唯一空间来源，必须锁定原房间墙体、窗户/窗帘、门洞、电视/媒体墙、固定柜体、吊顶/梁、地面纹理方向、空旷区域和整体空间比例；原沙发、单椅、边几、茶几、抱枕、地毯等可移动家具可以被商品合理替换或轻微调整，但不能重建、翻转、旋转或重排房间骨架，不能新增产品图里的整面柜墙/书架/灯具/门洞。';
 const PRODUCT_BACKGROUND_ISOLATION_GUIDE = '产品图隔离约束：产品参考图只用于提取沙发本体的款式、轮廓、比例、材质、颜色和纹理；必须完全忽略产品图里的房间背景、墙柜、书架、木饰面、吊顶灯带、厨房、门洞、窗户、落地灯、茶几、玩偶、地毯、装饰和地面材质，绝对不要把这些元素迁移到房间参考图。';
-const PRODUCT_VIEW_GUIDE = '商品视角约束：可以在同一个真实房间内移动机位，选择沙发正面、侧面或45度斜侧等更适合展示的角度；如果角度与房间结构冲突，优先保持房间构造正确。';
+const PLACEMENT_LOGIC_GUIDE = '沙发落位约束：生成前必须先识别电视/媒体墙、主背景墙、大窗/窗帘、门洞、固定柜体、地毯/茶几、原座位区和主要通道，再决定沙发位置；有电视/媒体墙时，沙发应落在其对侧或斜对侧的可用地面，座面朝向电视/媒体墙，长边与电视墙大致平行；如果电视在侧墙、大窗在后墙，禁止把大沙发横在窗前或房间中轴线挡住采光，应放到电视对侧的下方/侧方开阔地面并保留窗前通道。位置合理性优先于居中构图和预览锚点，不能挡住窗户主体、门洞、走道、电视墙或固定柜体。';
+const PRODUCT_VIEW_GUIDE = '商品视角约束：可以在同一个真实房间内移动机位，选择沙发正面、侧面或45度斜侧等更适合展示的角度；如果角度与房间结构或合理落位冲突，优先保持房间构造和沙发摆放逻辑正确。';
 
 const CHAT_WELCOME_ACTIONS: ChatAction[] = [
   { type: 'uploadProduct', label: '上传沙发图', description: '锁定款式、材质和比例' },
@@ -661,6 +662,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [sofaX, setSofaX] = useState<number>(0.5);
   const [sofaY, setSofaY] = useState<number>(0.65);
+  const [hasManualPlacement, setHasManualPlacement] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -669,6 +671,7 @@ export default function App() {
     setDistance(shot);
     setSofaX(preset.anchorX);
     setSofaY(preset.anchorY);
+    setHasManualPlacement(false);
   };
 
   // Get dynamic scale value depending on Shot Distance selection
@@ -822,6 +825,9 @@ export default function App() {
 
     const dx = x - dragStart.x;
     const dy = y - dragStart.y;
+    if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) {
+      setHasManualPlacement(true);
+    }
 
     setSofaX((prev) => Math.min(Math.max(prev + dx, 0.15), 0.85));
     setSofaY((prev) => Math.min(Math.max(prev + dy, 0.35), 0.85));
@@ -846,6 +852,7 @@ export default function App() {
           setResultImage(null); // Reset result on new upload
           setPendingSaasImage(null);
           setPendingSaasSkipConsume(false);
+          setHasManualPlacement(false);
           resultRunRef.current += 1;
         }
       };
@@ -866,6 +873,7 @@ export default function App() {
           setResultImage(null); // Reset result on new upload
           setPendingSaasImage(null);
           setPendingSaasSkipConsume(false);
+          setHasManualPlacement(false);
           resultRunRef.current += 1;
         }
       };
@@ -914,7 +922,9 @@ export default function App() {
         };
 
         if (elapsed >= 0.6) {
-          addLog(`[识别] 🔍 提取【产品参考图】透视轴。当前定位：X=${(sofaX * 100).toFixed(0)}%, Y=${(sofaY * 100).toFixed(0)}%`);
+          addLog(hasManualPlacement
+            ? `[识别] 🔍 提取【产品参考图】透视轴。手动软参考：X=${(sofaX * 100).toFixed(0)}%, Y=${(sofaY * 100).toFixed(0)}%`
+            : '[识别] 🔍 提取【产品参考图】透视轴。未使用默认坐标，改由房间结构自动判断落位');
         }
         if (elapsed >= 1.6) {
           addLog(`[透视] 📐 校准【房间参考图】透视消失线，开始匹配镜头高度 ${currentPreset.height}`);
@@ -962,9 +972,10 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        placementX: sofaX,
-        placementY: sofaY,
-        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_BACKGROUND_ISOLATION_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，预览锚点只作为软参考，不要机械照搬。`
+        hasManualPlacement,
+        placementX: hasManualPlacement ? sofaX : undefined,
+        placementY: hasManualPlacement ? sofaY : undefined,
+        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_BACKGROUND_ISOLATION_GUIDE} ${PLACEMENT_LOGIC_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，${hasManualPlacement ? '用户拖动坐标只作为软参考，若不符合真实地面和动线必须自动修正。' : '当前没有用户手动落位坐标，不能使用画面中心默认点作为摆放依据。'}`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -1287,7 +1298,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_BACKGROUND_ISOLATION_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、遮挡动线或悬浮。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_BACKGROUND_ISOLATION_GUIDE}\n${PLACEMENT_LOGIC_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、电视/媒体墙、大窗、门洞、固定柜体、地毯/茶几和通道关系，再把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、挡窗、挡电视、遮挡动线或悬浮。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
