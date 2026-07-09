@@ -14,16 +14,49 @@ import {
   MessageCircle,
   Bot,
   UserRound,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Home as HomeIcon,
+  ArrowRight,
+  Wand2,
+  Settings,
+  Images,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type WorkspaceMode = 'studio' | 'chat';
+type WorkspaceMode = 'HOME' | 'STANDARD' | 'CHAT';
+type ChatActionType =
+  | 'uploadProduct'
+  | 'uploadRoom'
+  | 'generate'
+  | 'shot'
+  | 'resolution'
+  | 'prompt';
+type ChatGeneration = {
+  status: 'loading' | 'success' | 'error' | 'pending';
+  title?: string;
+  image?: string | null;
+  error?: string;
+  note?: string;
+  shot?: 'far' | 'medium' | 'close';
+  resolution?: '1K' | '2K' | '4K' | '8K';
+};
+type ChatAction = {
+  type: ChatActionType;
+  label: string;
+  value?: string;
+  description?: string;
+  prompt?: string;
+};
 type ChatMessage = {
   id: string;
   role: 'assistant' | 'user';
   content: string;
   image?: string | null;
+  images?: string[];
+  actions?: ChatAction[];
+  generation?: ChatGeneration;
+  imageCategory?: 'product' | 'room';
 };
 
 const SHOT_PRESETS = [
@@ -55,6 +88,163 @@ const SHOT_PRESETS = [
     promptGuide: '低角度仰视微距镜头，大光圈浅景深。极近距离刻画沙发的局部细节和高超缝纫车线。焦点聚集在沙发皮革天然纹路、褶皱阴影及质感材质，背景完美虚化。'
   }
 ] as const;
+
+const CHAT_WELCOME_ACTIONS: ChatAction[] = [
+  { type: 'uploadProduct', label: '上传沙发图', description: '锁定款式、材质和比例' },
+  { type: 'uploadRoom', label: '上传房间图', description: '锁定空间、光影和透视' },
+  {
+    type: 'prompt',
+    label: '现代奶油风主图',
+    description: '直接套用高转化电商构图',
+    prompt: '生成现代奶油风客厅沙发电商主图，午后自然光，沙发在画面中心，地毯接触阴影真实，整体高级干净。',
+  },
+  {
+    type: 'prompt',
+    label: '微距材质特写',
+    description: '突出皮纹/布纹/缝线',
+    prompt: '生成沙发材质微距特写图，强调面料纹理、车缝细节、褶皱和柔和侧光，背景自然虚化。',
+  },
+];
+
+const getChatId = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+function ChatGenerationLoadingCard({ generation }: { generation: ChatGeneration }) {
+  const [progress, setProgress] = useState(8);
+  const shotName = SHOT_PRESETS.find((preset) => preset.id === generation.shot)?.name || '自由构图';
+  const steps = [
+    '解析对话需求、参考图和电商构图目标...',
+    '锁定沙发款式、比例、材质纹理与关键细节...',
+    '匹配空间透视、接触阴影和自然光照方向...',
+    '执行高端家居摄影级画面渲染与清晰度校准...',
+  ];
+  const currentStep = progress < 28 ? 0 : progress < 58 ? 1 : progress < 84 ? 2 : 3;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((value) => {
+        if (value < 28) return Math.min(28, value + Math.floor(Math.random() * 5) + 2);
+        if (value < 58) return Math.min(58, value + Math.floor(Math.random() * 4) + 1);
+        if (value < 84) return Math.min(84, value + Math.floor(Math.random() * 3) + 1);
+        if (value < 97) return Math.min(97, value + 0.6);
+        return value;
+      });
+    }, 520);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="mt-3 w-full max-w-[34rem] rounded-2xl border border-[#E8E3D9] bg-white p-5 shadow-[0_14px_34px_rgba(44,41,38,0.08)] space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-[#FAF8F5] flex items-center justify-center text-[#B8975A] shrink-0">
+            <RefreshCw className="w-5 h-5 animate-spin" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-serif font-bold text-[#1F1D1B] leading-tight">
+              {generation.title || 'AI 对话生图生成中'}
+            </p>
+            <p className="text-xs text-[#78716C] mt-1">{shotName}</p>
+          </div>
+        </div>
+        <span className="rounded-full bg-[#FAF6EE] px-3 py-1.5 text-xs font-bold text-[#B8975A] shrink-0">
+          {generation.resolution || '2K'}
+        </span>
+      </div>
+
+      <div className="rounded-xl bg-[#FAF8F5] border border-[#E8E3D9] p-4 grid grid-cols-2 gap-4 text-xs">
+        <div>
+          <p className="text-[#78716C] mb-1">镜头景别</p>
+          <p className="font-bold text-[#2C2926]">{shotName}</p>
+        </div>
+        <div>
+          <p className="text-[#78716C] mb-1">输出清晰度</p>
+          <p className="font-bold text-[#2C2926]">{generation.resolution || '2K'}</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between text-[11px] font-bold">
+          <span className="text-[#78716C]">整体渲染进度</span>
+          <span className="text-[#B8975A]">{Math.floor(progress)}%</span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-[#E8E3D9] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-[#2E2B28] transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="space-y-2 pt-1">
+          {steps.map((stepText, stepIndex) => {
+            const isCompleted = stepIndex < currentStep;
+            const isActive = stepIndex === currentStep;
+            return (
+              <div key={stepText} className="flex items-start gap-2 text-xs">
+                <span className="mt-0.5 w-4 h-4 rounded-full border border-[#E8E3D9] flex items-center justify-center shrink-0 bg-white">
+                  {isCompleted ? (
+                    <Check className="w-3 h-3 text-emerald-600" />
+                  ) : isActive ? (
+                    <span className="w-2 h-2 rounded-full bg-[#B8975A] animate-pulse" />
+                  ) : null}
+                </span>
+                <span className={isCompleted ? 'text-[#78716C] line-through' : isActive ? 'text-[#2C2926] font-bold' : 'text-[#78716C]'}>
+                  {stepText}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatGenerationResultCard({
+  generation,
+  onUse,
+}: {
+  generation: ChatGeneration;
+  onUse: (image: string) => void;
+}) {
+  if (!generation.image) return null;
+  return (
+    <div className="mt-3 w-full max-w-[34rem] rounded-2xl border border-[#E8E3D9] bg-white p-4 shadow-[0_14px_34px_rgba(44,41,38,0.08)] space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-serif font-bold text-[#1F1D1B]">生成结果</p>
+          <p className="text-xs text-[#78716C] mt-1">{generation.note || '图片已生成在对话中。'}</p>
+        </div>
+        <span className="rounded-full bg-[#FAF6EE] px-3 py-1.5 text-[11px] font-bold text-[#B8975A] shrink-0">
+          {generation.resolution || '2K'}
+        </span>
+      </div>
+      <div className="rounded-xl overflow-hidden border border-[#E8E3D9] bg-[#F5F2EB]">
+        <img src={generation.image} alt="Chat generated sofa result" className="w-full max-h-[420px] object-contain" />
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button
+          onClick={() => onUse(generation.image!)}
+          className="px-3 py-2 rounded-lg border border-[#E8E3D9] text-xs font-bold text-[#2C2926] hover:bg-[#FAF8F5] flex items-center gap-1.5"
+        >
+          <Camera className="w-3.5 h-3.5 text-[#B8975A]" />
+          放到预览区
+        </button>
+        <a
+          href={generation.image}
+          download="chat-sofa-result.png"
+          className="px-3 py-2 rounded-lg bg-[#2E2B28] text-xs font-bold text-white hover:bg-[#403B37] flex items-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5 text-[#B8975A]" />
+          下载
+        </a>
+      </div>
+    </div>
+  );
+}
 
 const compressImage = (dataUrl: string, maxDim = 1600): Promise<string> => {
   return new Promise((resolve) => {
@@ -164,16 +354,23 @@ export default function App() {
   const [generating, setGenerating] = useState<boolean>(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('studio');
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('HOME');
 
   // Chat generation states
   const [chatInput, setChatInput] = useState<string>('');
   const [chatGenerating, setChatGenerating] = useState<boolean>(false);
+  const [chatBrief, setChatBrief] = useState<string>('');
+  const [chatShot, setChatShot] = useState<'far' | 'medium' | 'close'>('medium');
+  const [chatResolution, setChatResolution] = useState<'1K' | '2K' | '4K' | '8K'>('2K');
+  const chatProductInputRef = useRef<HTMLInputElement | null>(null);
+  const chatRoomInputRef = useRef<HTMLInputElement | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
-      id: 'welcome',
+      id: getChatId(),
       role: 'assistant',
-      content: '描述你想要的沙发电商图。我可以直接按文字生图，也可以结合左侧上传的沙发图和房间图生成。',
+      content: '选择一个快捷入口，或直接描述你想要的沙发电商图。我会按常规生图逻辑保留商品细节，也支持自由对话补充要求。',
+      actions: CHAT_WELCOME_ACTIONS,
     },
   ]);
 
@@ -189,6 +386,10 @@ export default function App() {
       logTerminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [activeLogs]);
+
+  useEffect(() => {
+    chatScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [chatMessages, chatGenerating]);
 
   // Drag states for sofa position previewing
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -553,69 +754,263 @@ export default function App() {
     }
   };
 
-  const handleChatGenerate = async () => {
-    const prompt = chatInput.trim();
-    if (!prompt || chatGenerating) return;
+  const addChatMessage = (message: Omit<ChatMessage, 'id'>) => {
+    const id = getChatId();
+    setChatMessages((prev) => [...prev, { id, ...message }]);
+    return id;
+  };
 
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: prompt,
-    };
-    setChatMessages((prev) => [...prev, userMessage]);
+  const updateChatMessage = (id: string, patch: Partial<ChatMessage>) => {
+    setChatMessages((prev) => prev.map((message) => (message.id === id ? { ...message, ...patch } : message)));
+  };
+
+  const getNextStepActions = (): ChatAction[] => [
+    { type: 'generate', label: '开始生成', description: '按当前对话和参考图出图' },
+    { type: 'uploadProduct', label: productImage ? '更换沙发图' : '上传沙发图', description: '作为商品最高优先级参考' },
+    { type: 'uploadRoom', label: roomImage ? '更换房间图' : '上传房间图', description: '锁定空间结构与光影' },
+    { type: 'shot', label: '切换近景特写', value: 'close', description: '突出材质纹理和缝线' },
+    { type: 'shot', label: '切换中景主图', value: 'medium', description: '适合电商首图展示' },
+    { type: 'resolution', label: '切换 4K', value: '4K', description: '提高输出清晰度参数' },
+  ];
+
+  const resetChat = () => {
+    setChatMessages([
+      {
+        id: getChatId(),
+        role: 'assistant',
+        content: '选择一个快捷入口，或直接描述你想要的沙发电商图。我会按常规生图逻辑保留商品细节，也支持自由对话补充要求。',
+        actions: CHAT_WELCOME_ACTIONS,
+      },
+    ]);
     setChatInput('');
+    setChatBrief('');
+    setChatShot('medium');
+    setChatResolution('2K');
+    setChatGenerating(false);
+  };
+
+  const handleChatProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      if (!event.target?.result) return;
+      const compressed = await compressImage(event.target.result as string, 1600);
+      setProductImage(compressed);
+      setProductName(file.name);
+      setResultImage(null);
+      addChatMessage({
+        role: 'user',
+        content: productImage ? '已替换沙发商品参考图' : '已上传沙发商品参考图',
+        images: [compressed],
+        imageCategory: 'product',
+      });
+      addChatMessage({
+        role: 'assistant',
+        content: '收到沙发图。生成时我会优先保留款式、比例、颜色、材质纹理、缝线和扶手/靠背结构。',
+        actions: getNextStepActions(),
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleChatRoomUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      if (!event.target?.result) return;
+      const compressed = await compressImage(event.target.result as string, 1600);
+      setRoomImage(compressed);
+      setRoomName(file.name);
+      setResultImage(null);
+      addChatMessage({
+        role: 'user',
+        content: roomImage ? '已替换房间场景参考图' : '已上传房间场景参考图',
+        images: [compressed],
+        imageCategory: 'room',
+      });
+      addChatMessage({
+        role: 'assistant',
+        content: '收到房间图。生成时我会参考空间结构、地面墙面、光线方向、镜头透视和整体氛围。',
+        actions: getNextStepActions(),
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const runChatGeneration = async (promptOverride?: string) => {
+    const activePrompt = (promptOverride || chatBrief || chatInput).trim();
+    if (!activePrompt && !productImage && !roomImage) {
+      addChatMessage({
+        role: 'assistant',
+        content: '先描述你想要什么画面，或者上传沙发图/房间图。我可以从纯文字开始，也可以结合参考图生成。',
+        actions: CHAT_WELCOME_ACTIONS,
+      });
+      return;
+    }
+
     setErrorMessage(null);
     setChatGenerating(true);
+    const loadingId = addChatMessage({
+      role: 'assistant',
+      content: '',
+      generation: {
+        status: 'loading',
+        title: 'AI 对话生图生成中',
+        shot: chatShot,
+        resolution: chatResolution,
+        note: '正在按对话要求和参考图生成...',
+      },
+    });
 
     try {
+      const activePreset = SHOT_PRESETS.find((preset) => preset.id === chatShot) || SHOT_PRESETS[1];
       const response = await fetch('/api/chat-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
           toolId,
-          prompt,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
-          imageSize: resolution,
+          imageSize: chatResolution,
           history: chatMessages.map(({ role, content }) => ({ role, content })),
         }),
       });
 
       const data = await response.json();
       if (data.success && data.image) {
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: `已按你的描述生成图片。${data.modelUsed ? `模型: ${data.modelUsed}` : ''}`,
-          image: data.image,
-        };
-        setChatMessages((prev) => [...prev, assistantMessage]);
+        updateChatMessage(loadingId, {
+          content: '',
+          generation: {
+            status: 'success',
+            title: '生成完成',
+            image: data.image,
+            shot: chatShot,
+            resolution: chatResolution,
+            note: data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。',
+          },
+          actions: [
+            { type: 'generate', label: '再生成一版', description: '保留当前设置重新出图' },
+            { type: 'shot', label: '改成近景', value: 'close', description: '更突出材质细节' },
+            { type: 'shot', label: '改成远景', value: 'far', description: '展示完整空间氛围' },
+          ],
+        });
         setResultImage(data.image);
       } else if (data.generatedPreview) {
-        const assistantMessage: ChatMessage = {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: data.errorMessage || '图片已生成，但 SaaS 保存失败，当前只显示临时预览。',
-          image: data.generatedPreview,
-        };
-        setChatMessages((prev) => [...prev, assistantMessage]);
+        updateChatMessage(loadingId, {
+          content: '',
+          generation: {
+            status: 'success',
+            title: '生成完成，保存失败',
+            image: data.generatedPreview,
+            shot: chatShot,
+            resolution: chatResolution,
+            note: data.errorMessage || '图片已生成，但 SaaS 保存失败，当前只显示临时预览。',
+          },
+          actions: [{ type: 'generate', label: '重新生成并保存' }],
+        });
         setResultImage(data.generatedPreview);
         setErrorMessage(data.errorMessage || '图片已生成，但未保存到 SaaS 图片库。');
       } else {
         throw new Error(data.errorMessage || data.error || `对话生图失败，状态码: ${response.status}`);
       }
     } catch (err: any) {
-      const assistantMessage: ChatMessage = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: err.message || '对话生图失败，请稍后重试。',
-      };
-      setChatMessages((prev) => [...prev, assistantMessage]);
+      updateChatMessage(loadingId, {
+        content: '',
+        generation: {
+          status: 'error',
+          error: err.message || '对话生图失败，请稍后重试。',
+        },
+        actions: [
+          { type: 'generate', label: '重试生成' },
+          { type: 'uploadProduct', label: '更换沙发图' },
+          { type: 'uploadRoom', label: '更换房间图' },
+        ],
+      });
       setErrorMessage(err.message || '对话生图失败，请稍后重试。');
     } finally {
       setChatGenerating(false);
+    }
+  };
+
+  const handleChatSubmit = async (e?: React.FormEvent, overridePrompt?: string) => {
+    if (e) e.preventDefault();
+    const text = (overridePrompt ?? chatInput).trim();
+    if (!text || chatGenerating) return;
+
+    setChatInput('');
+    setChatBrief(text);
+    addChatMessage({ role: 'user', content: text });
+
+    const wantsDirectGenerate = /生成|出图|做图|渲染|generate/i.test(text);
+    if (wantsDirectGenerate) {
+      addChatMessage({
+        role: 'assistant',
+        content: '我已整理你的需求，将按常规生图逻辑执行：保留商品细节、匹配空间透视与真实接触阴影。',
+        actions: getNextStepActions(),
+      });
+      await runChatGeneration(text);
+      return;
+    }
+
+    addChatMessage({
+      role: 'assistant',
+      content: '已记录你的画面要求。你可以继续补充描述，也可以点击下方卡片上传参考图、切换镜头或直接生成。',
+      actions: getNextStepActions(),
+    });
+  };
+
+  const handleChatAction = async (action: ChatAction) => {
+    if (chatGenerating) return;
+
+    if (action.prompt) {
+      await handleChatSubmit(undefined, action.prompt);
+      return;
+    }
+    if (action.type === 'uploadProduct') {
+      chatProductInputRef.current?.click();
+      return;
+    }
+    if (action.type === 'uploadRoom') {
+      chatRoomInputRef.current?.click();
+      return;
+    }
+    if (action.type === 'shot' && action.value) {
+      const nextShot = action.value as 'far' | 'medium' | 'close';
+      setChatShot(nextShot);
+      setDistance(nextShot);
+      const preset = SHOT_PRESETS.find((item) => item.id === nextShot);
+      addChatMessage({
+        role: 'user',
+        content: `切换镜头：${preset?.name || action.label}`,
+      });
+      addChatMessage({
+        role: 'assistant',
+        content: `镜头已切换为 ${preset?.name || action.label}。`,
+        actions: getNextStepActions(),
+      });
+      return;
+    }
+    if (action.type === 'resolution' && action.value) {
+      const nextResolution = action.value as '1K' | '2K' | '4K' | '8K';
+      setChatResolution(nextResolution);
+      setResolution(nextResolution);
+      addChatMessage({ role: 'user', content: `输出清晰度：${nextResolution}` });
+      addChatMessage({
+        role: 'assistant',
+        content: `清晰度已切换为 ${nextResolution}。`,
+        actions: getNextStepActions(),
+      });
+      return;
+    }
+    if (action.type === 'generate') {
+      await runChatGeneration();
     }
   };
 
@@ -646,26 +1041,46 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="bg-[#FAF8F5] border border-[#E8E3D9] rounded-xl p-1 flex items-center gap-1 shadow-sm">
+          {workspaceMode !== 'HOME' && (
             <button
-              onClick={() => setWorkspaceMode('studio')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                workspaceMode === 'studio' ? 'bg-white text-[#B8975A] shadow-sm' : 'text-[#78716C] hover:text-[#2C2926]'
-              }`}
+              onClick={() => setWorkspaceMode('HOME')}
+              className="px-3 py-2 rounded-xl border border-[#E8E3D9] bg-[#FAF8F5] text-xs font-bold text-[#78716C] hover:text-[#2C2926] hover:bg-white transition-all flex items-center gap-1.5"
             >
-              <Camera className="w-3.5 h-3.5" />
-              空间合成
+              <HomeIcon className="w-3.5 h-3.5" />
+              入口
             </button>
-            <button
-              onClick={() => setWorkspaceMode('chat')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
-                workspaceMode === 'chat' ? 'bg-white text-[#B8975A] shadow-sm' : 'text-[#78716C] hover:text-[#2C2926]'
-              }`}
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              AI对话生图
-            </button>
-          </div>
+          )}
+
+          {workspaceMode === 'STANDARD' && (
+            <div className="hidden md:flex items-center gap-2 text-xs font-bold text-[#78716C]">
+              <ArrowRight className="w-3.5 h-3.5 text-[#B8975A]" />
+              <span className="text-[#2C2926]">常规空间合成</span>
+              <button
+                onClick={() => {
+                  setResultImage(null);
+                  setErrorMessage(null);
+                }}
+                className="ml-2 px-3 py-2 rounded-xl border border-[#E8E3D9] hover:bg-[#FAF8F5] transition-colors flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                重置结果
+              </button>
+            </div>
+          )}
+
+          {workspaceMode === 'CHAT' && (
+            <div className="hidden md:flex items-center gap-2 text-xs font-bold text-[#78716C]">
+              <ArrowRight className="w-3.5 h-3.5 text-[#B8975A]" />
+              <span className="text-[#2C2926]">AI 对话生图</span>
+              <button
+                onClick={resetChat}
+                className="ml-2 px-3 py-2 rounded-xl border border-[#E8E3D9] hover:bg-[#FAF8F5] transition-colors flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                重置对话
+              </button>
+            </div>
+          )}
 
           {/* Elegant SaaS info badges */}
           {userInfo && (
@@ -684,11 +1099,77 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Grid Workspace */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden h-[calc(100vh-81px)]">
+      {workspaceMode === 'HOME' ? (
+        <main className="flex-1 overflow-y-auto p-6 md:p-10 flex items-center justify-center">
+          <motion.div
+            key="home"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-6xl"
+          >
+            <div className="mb-10">
+              <p className="text-xs uppercase tracking-[0.28em] text-[#B8975A] font-bold mb-4">
+                Choose Creation Mode
+              </p>
+              <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1F1D1B] mb-4">
+                选择沙发生图入口
+              </h2>
+              <p className="text-[#78716C] max-w-2xl leading-relaxed">
+                常规空间合成保留原有上传、拖拽定位、镜头景别和一键生成流程；AI 对话生图支持自由描述、快捷卡片、上传参考图和对话内生成结果。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <button
+                onClick={() => setWorkspaceMode('STANDARD')}
+                className="group text-left bg-white rounded-2xl p-8 md:p-10 border border-[#E8E3D9] shadow-sm hover:-translate-y-1 hover:shadow-xl transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-[#FAF8F5] border border-[#E8E3D9] flex items-center justify-center mb-8">
+                  <Camera className="w-6 h-6 text-[#B8975A]" />
+                </div>
+                <div className="flex items-end justify-between gap-6">
+                  <div>
+                    <h3 className="font-serif text-3xl font-bold text-[#1F1D1B] mb-3">
+                      常规空间合成
+                    </h3>
+                    <p className="text-[#78716C] leading-relaxed">
+                      上传沙发图和房间图，拖拽确定摆放位置，选择远景/中景/近景与清晰度，一键生成电商级空间摄影图。
+                    </p>
+                  </div>
+                  <ArrowRight className="w-6 h-6 shrink-0 text-[#B8975A] group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+
+              <button
+                onClick={() => setWorkspaceMode('CHAT')}
+                className="group text-left bg-[#2E2B28] text-white rounded-2xl p-8 md:p-10 border border-[#2E2B28] shadow-sm hover:-translate-y-1 hover:shadow-xl transition-all"
+              >
+                <div className="w-14 h-14 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-8">
+                  <MessageCircle className="w-6 h-6 text-[#B8975A]" />
+                </div>
+                <div className="flex items-end justify-between gap-6">
+                  <div>
+                    <h3 className="font-serif text-3xl font-bold mb-3">
+                      AI 对话生图
+                    </h3>
+                    <p className="text-white/70 leading-relaxed">
+                      像聊天一样上传沙发/房间图、选择卡片、切换镜头和清晰度，也可以直接自由描述画面需求并在对话里生成图片。
+                    </p>
+                  </div>
+                  <ArrowRight className="w-6 h-6 shrink-0 text-[#B8975A] group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        </main>
+      ) : (
+      /* Main Grid Workspace */
+      <div className={`flex-1 grid grid-cols-1 overflow-hidden h-[calc(100vh-81px)] ${
+        workspaceMode === 'CHAT' ? 'lg:grid-cols-1' : 'lg:grid-cols-12'
+      }`}>
         
         {/* Left Control Panel (4 Columns) */}
-        <div className="lg:col-span-5 xl:col-span-4 border-r border-[#E8E3D9] overflow-y-auto p-6 bg-white flex flex-col justify-between gap-6 shadow-sm">
+        <div className={`${workspaceMode === 'CHAT' ? 'hidden' : 'lg:col-span-5 xl:col-span-4'} border-r border-[#E8E3D9] overflow-y-auto p-6 bg-white flex flex-col justify-between gap-6 shadow-sm`}>
           <div className="space-y-6">
             
             {/* Box 1: Product Upload */}
@@ -873,7 +1354,7 @@ export default function App() {
         </div>
 
         {/* Right Stage Panel (7 Columns) */}
-        <div className="lg:col-span-7 xl:col-span-8 bg-[#FAF8F5] p-6 flex flex-col justify-between overflow-hidden">
+        <div className={`${workspaceMode === 'CHAT' ? 'col-span-1' : 'lg:col-span-7 xl:col-span-8'} bg-[#FAF8F5] p-6 flex flex-col justify-between overflow-hidden`}>
           
           {/* Output label */}
           <div className="flex justify-between items-center mb-3">
@@ -911,8 +1392,10 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {workspaceMode === 'chat' ? (
+          {workspaceMode === 'CHAT' ? (
             <div className="flex-1 bg-white rounded-2xl border border-[#E8E3D9] overflow-hidden shadow-sm flex flex-col min-h-0">
+              <input ref={chatProductInputRef} type="file" accept="image/*" className="hidden" onChange={handleChatProductUpload} />
+              <input ref={chatRoomInputRef} type="file" accept="image/*" className="hidden" onChange={handleChatRoomUpload} />
               <div className="px-5 py-4 border-b border-[#E8E3D9] flex items-center justify-between bg-[#FAF8F5]">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-lg bg-[#2E2B28] text-[#B8975A] flex items-center justify-center">
@@ -926,6 +1409,14 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-[#78716C]">
+                  <span className="bg-white border border-[#E8E3D9] px-2 py-1 rounded-md flex items-center gap-1">
+                    <Camera className="w-3 h-3 text-[#B8975A]" />
+                    {SHOT_PRESETS.find((preset) => preset.id === chatShot)?.name || '中景'}
+                  </span>
+                  <span className="bg-white border border-[#E8E3D9] px-2 py-1 rounded-md flex items-center gap-1">
+                    <Settings className="w-3 h-3 text-[#B8975A]" />
+                    {chatResolution}
+                  </span>
                   {productImage && (
                     <span className="bg-white border border-[#E8E3D9] px-2 py-1 rounded-md flex items-center gap-1">
                       <ImageIcon className="w-3 h-3 text-[#B8975A]" /> 商品图
@@ -940,7 +1431,15 @@ export default function App() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-[#FAF8F5]">
-                {chatMessages.map((message) => (
+                {chatMessages.map((message, index) => {
+                  const isLatestAssistant =
+                    message.role === 'assistant' &&
+                    index === chatMessages.map((item) => item.role).lastIndexOf('assistant');
+                  const shouldShowActions =
+                    !!message.actions?.length &&
+                    (message.id === chatMessages[0]?.id || isLatestAssistant);
+
+                  return (
                   <div
                     key={message.id}
                     className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -960,7 +1459,35 @@ export default function App() {
                       >
                         {message.content}
                       </div>
-                      {message.image && (
+
+                      {message.images && message.images.length > 0 && (
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          {message.images.map((img, idx) => (
+                            <div key={`${message.id}-${idx}`} className="w-28 aspect-square rounded-xl overflow-hidden border border-[#E8E3D9] bg-white">
+                              <img src={img} alt="Chat reference" className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {message.generation?.status === 'loading' && (
+                        <ChatGenerationLoadingCard generation={message.generation} />
+                      )}
+                      {message.generation?.status === 'success' && (
+                        <ChatGenerationResultCard
+                          generation={message.generation}
+                          onUse={(image) => {
+                            setResultImage(image);
+                            setWorkspaceMode('STANDARD');
+                          }}
+                        />
+                      )}
+                      {message.generation?.status === 'error' && (
+                        <div className="mt-3 w-full max-w-[34rem] rounded-xl border border-red-100 bg-red-50 p-4 text-xs text-red-600">
+                          {message.generation.error || '生成失败，请重试。'}
+                        </div>
+                      )}
+                      {message.image && !message.generation && (
                         <div className="mt-2 bg-white border border-[#E8E3D9] rounded-xl p-2 shadow-sm">
                           <img
                             src={message.image}
@@ -971,13 +1498,56 @@ export default function App() {
                             <button
                               onClick={() => {
                                 setResultImage(message.image || null);
-                                setWorkspaceMode('studio');
+                                setWorkspaceMode('STANDARD');
                               }}
                               className="text-[10px] font-bold text-[#B8975A] hover:text-[#2E2B28] flex items-center gap-1"
                             >
                               <Camera className="w-3 h-3" />
                               放到预览区
                             </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {shouldShowActions && message.actions && (
+                        <div className="mt-3 w-full max-w-[38rem] rounded-2xl border border-[#E8E3D9] bg-white/80 p-3 shadow-sm">
+                          <div className="mb-2.5 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <Wand2 className="w-3.5 h-3.5 text-[#B8975A]" />
+                              <span className="text-[11px] font-bold text-[#78716C]">
+                                {message.id === chatMessages[0]?.id ? '快捷入口' : '下一步操作'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-[#78716C]">
+                              也可以继续自由输入
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {message.actions.map((action, actionIndex) => (
+                              <button
+                                key={`${message.id}-${action.type}-${action.value || actionIndex}`}
+                                onClick={() => handleChatAction(action)}
+                                disabled={chatGenerating}
+                                className="min-h-[4.25rem] text-left rounded-xl border border-[#E8E3D9] bg-white px-3 py-2.5 hover:border-[#B8975A]/60 hover:bg-[#FAF8F5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <span className="flex items-start gap-2">
+                                  <span className="mt-0.5 w-7 h-7 rounded-lg bg-[#FAF8F5] border border-[#E8E3D9] flex items-center justify-center shrink-0 text-[#B8975A]">
+                                    {action.type === 'uploadProduct' && <Images className="w-3.5 h-3.5" />}
+                                    {action.type === 'uploadRoom' && <ImageIcon className="w-3.5 h-3.5" />}
+                                    {action.type === 'generate' && <Sparkles className="w-3.5 h-3.5" />}
+                                    {action.type === 'shot' && <Camera className="w-3.5 h-3.5" />}
+                                    {action.type === 'resolution' && <Settings className="w-3.5 h-3.5" />}
+                                    {action.type === 'prompt' && <Wand2 className="w-3.5 h-3.5" />}
+                                  </span>
+                                  <span>
+                                    <span className="text-[13px] font-bold block text-[#2C2926]">{action.label}</span>
+                                    {action.description && (
+                                      <span className="text-[11px] leading-snug text-[#78716C] mt-0.5 block">{action.description}</span>
+                                    )}
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -988,7 +1558,8 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
 
                 {chatGenerating && (
                   <div className="flex gap-3">
@@ -1001,17 +1572,34 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                <div ref={chatScrollRef} />
               </div>
 
               <div className="border-t border-[#E8E3D9] p-4 bg-white">
-                <div className="flex gap-2">
+                <form onSubmit={handleChatSubmit} className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => chatProductInputRef.current?.click()}
+                    className="w-11 rounded-xl border border-[#E8E3D9] bg-[#FAF8F5] text-[#B8975A] hover:bg-white flex items-center justify-center transition-colors"
+                    title="上传沙发图"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => chatRoomInputRef.current?.click()}
+                    className="w-11 rounded-xl border border-[#E8E3D9] bg-[#FAF8F5] text-[#B8975A] hover:bg-white flex items-center justify-center transition-colors"
+                    title="上传房间图"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
                   <textarea
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
-                        handleChatGenerate();
+                        handleChatSubmit();
                       }
                     }}
                     placeholder="例如：把这张沙发放进现代奶油风客厅，午后自然光，横版电商主图，地毯接触阴影真实..."
@@ -1019,14 +1607,14 @@ export default function App() {
                     disabled={chatGenerating}
                   />
                   <button
-                    onClick={handleChatGenerate}
+                    type="submit"
                     disabled={chatGenerating || !chatInput.trim()}
                     className="w-12 rounded-xl bg-[#2E2B28] hover:bg-[#403B37] disabled:bg-stone-200 text-white flex items-center justify-center transition-colors"
-                    title="发送并生成"
+                    title="发送"
                   >
                     {chatGenerating ? <RefreshCw className="w-4 h-4 animate-spin text-[#B8975A]" /> : <Send className="w-4 h-4 text-[#B8975A]" />}
                   </button>
-                </div>
+                </form>
               </div>
             </div>
           ) : (
@@ -1185,6 +1773,7 @@ export default function App() {
         </div>
 
       </div>
+      )}
     </div>
   );
 }
