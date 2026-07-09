@@ -77,30 +77,36 @@ type SaasInfo = {
 const SHOT_PRESETS = [
   {
     id: 'far',
-    name: '空间俯拍全景 (远景)',
-    height: '1.8米高角度俯拍',
-    angle: '广角镜头向下 30度俯拍',
-    scale: 0.38,
-    description: '广角视野，重点展现沙发在全屋硬装、地毯与灯光下的整体空间协同美感。',
-    promptGuide: '广角全景镜头，高位俯视30度视角。捕捉整个客厅的深远空间和豪华软装布局。沙发完整呈现在地毯和画面正中心，与周围植物、壁炉形成和谐的整体空间透视。具有极高品质的空间摄影感。'
+    name: '空间全景落位 (远景)',
+    height: '1.6米自然站立视角',
+    angle: '24-28mm 广角轻微俯视',
+    scale: 0.34,
+    anchorX: 0.5,
+    anchorY: 0.68,
+    description: '完整展示客厅空间，沙发只占合理比例，重点看它是否落在真实会客区。',
+    promptGuide: '远景空间摄影。先判断客厅真实地面和主会客区，把沙发放在最合理的地毯/茶几/电视墙关系中；沙发宽度约占画面32%-42%，完整入镜，不能遮挡门窗、通道或核心家具。镜头保留墙面、地面和周边家具，让买家清楚看到沙发与整个空间的比例关系。'
   },
   {
     id: 'medium',
-    name: '视平斜角半景 (中景)',
-    height: '1.2米标准视平',
-    angle: '斜侧 45度角三维透视',
-    scale: 0.55,
-    description: '商业经典摄影视角，完美兼顾沙发的立体形态轮廓与背景墙体线条。',
-    promptGuide: '视平线中焦摄影镜头，正面45度倾斜角空间透视。沙发占据画面黄金比例位置，精确展现沙发整体材质轮廓、背垫与扶手细节，背景深度虚化适度。'
+    name: '电商主图半景 (中景)',
+    height: '1.15米坐姿视平',
+    angle: '35-45度斜侧三维透视',
+    scale: 0.5,
+    anchorX: 0.5,
+    anchorY: 0.66,
+    description: '主图最稳妥视角，沙发是主体，但仍保留足够地面和背景证明落位真实。',
+    promptGuide: '中景电商主图。把沙发放在房间最自然的座位区，背部方向顺应主墙或地板透视线；沙发宽度约占画面48%-60%，底部和地面接触必须完整可见，前方留出合理呼吸空间。突出轮廓、扶手、坐垫和材质，同时让墙面/地毯/茶几关系看起来像真实摆拍。'
   },
   {
     id: 'close',
-    name: '局部仰位特写 (近景)',
-    height: '0.8米低空仰位',
-    angle: '低仰角斜侧微距特写',
-    scale: 0.72,
-    description: '大光圈虚化，极致突出沙发的皮质细纹、布艺经纬与细腻车缝缝隙。',
-    promptGuide: '低角度仰视微距镜头，大光圈浅景深。极近距离刻画沙发的局部细节和高超缝纫车线。焦点聚集在沙发皮革天然纹路、褶皱阴影及质感材质，背景完美虚化。'
+    name: '材质近景细节 (近景)',
+    height: '0.85米低位近景',
+    angle: '50-70mm 低位斜侧近摄',
+    scale: 0.64,
+    anchorX: 0.52,
+    anchorY: 0.7,
+    description: '靠近看材质和结构，但保留地面接触边缘，避免像漂浮抠图。',
+    promptGuide: '近景细节摄影。镜头靠近沙发扶手、坐垫、靠背或前沿材质，但仍要保留一段地面接触边缘和真实阴影，证明沙发确实放在房间地面上。允许自然裁切部分沙发边缘以突出纹理和缝线，但不能把沙发变成孤立产品图；背景轻微虚化但空间透视仍可信。'
   }
 ] as const;
 
@@ -111,13 +117,13 @@ const CHAT_WELCOME_ACTIONS: ChatAction[] = [
     type: 'prompt',
     label: '现代奶油风主图',
     description: '直接套用高转化电商构图',
-    prompt: '生成现代奶油风客厅沙发电商主图，午后自然光，沙发在画面中心，地毯接触阴影真实，整体高级干净。',
+    prompt: '生成现代奶油风客厅沙发电商主图，午后自然光，先判断房间最合理的会客区落位，沙发与地毯/茶几/主墙透视关系自然，接触阴影真实，整体高级干净。',
   },
   {
     type: 'prompt',
     label: '微距材质特写',
     description: '突出皮纹/布纹/缝线',
-    prompt: '生成沙发材质微距特写图，强调面料纹理、车缝细节、褶皱和柔和侧光，背景自然虚化。',
+    prompt: '生成沙发材质微距特写图，强调面料纹理、车缝细节、褶皱和柔和侧光，同时保留一段真实地面接触边缘和自然空间背景。',
   },
 ];
 
@@ -519,6 +525,13 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
+  const applyShotPreset = (shot: 'far' | 'medium' | 'close') => {
+    const preset = SHOT_PRESETS.find((item) => item.id === shot) || SHOT_PRESETS[1];
+    setDistance(shot);
+    setSofaX(preset.anchorX);
+    setSofaY(preset.anchorY);
+  };
+
   // Get dynamic scale value depending on Shot Distance selection
   const getScaleByDistance = () => {
     const preset = SHOT_PRESETS.find((p) => p.id === distance);
@@ -798,7 +811,9 @@ export default function App() {
         lighting: '高端柔和自然漫射光',
         aspectRatio: '4:3',
         imageSize: resolution,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。`
+        placementX: sofaX,
+        placementY: sofaY,
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位，预览锚点只作为参考，不要机械照搬。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -994,7 +1009,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区，不能随机居中、遮挡动线或悬浮。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
@@ -1100,7 +1115,7 @@ export default function App() {
     if (action.type === 'shot' && action.value) {
       const nextShot = action.value as 'far' | 'medium' | 'close';
       setChatShot(nextShot);
-      setDistance(nextShot);
+      applyShotPreset(nextShot);
       const preset = SHOT_PRESETS.find((item) => item.id === nextShot);
       addChatMessage({
         role: 'user',
@@ -1249,7 +1264,7 @@ export default function App() {
                       常规空间合成
                     </h3>
                     <p className="text-[#78716C] leading-relaxed">
-                      上传沙发图和房间图，拖拽确定摆放位置，选择远景/中景/近景与清晰度，一键生成电商级空间摄影图。
+                      上传沙发图和房间图，系统会自动判断最合理摆放区，也可拖拽作为软参考，选择远景/中景/近景与清晰度，一键生成电商级空间摄影图。
                     </p>
                   </div>
                   <ArrowRight className="w-6 h-6 shrink-0 text-[#B8975A] group-hover:translate-x-1 transition-transform" />
@@ -1381,7 +1396,7 @@ export default function App() {
                   {SHOT_PRESETS.map((preset) => (
                     <button
                       key={preset.id}
-                      onClick={() => setDistance(preset.id)}
+                      onClick={() => applyShotPreset(preset.id)}
                       className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer flex gap-3 items-start ${
                         distance === preset.id
                           ? 'border-[#B8975A] bg-[#FAF6EE] ring-1 ring-[#B8975A]/30 shadow-sm'
@@ -1863,7 +1878,7 @@ export default function App() {
                   {productImage && roomImage && (
                     <div className="absolute bottom-6 left-6 right-6 pointer-events-none flex justify-center">
                       <span className="bg-black/75 backdrop-blur text-[#FAF8F5] text-[10px] px-3.5 py-1.5 rounded-full shadow-lg border border-white/10 flex items-center gap-1.5">
-                        <Monitor className="w-3 h-3 text-[#B8975A]" /> 拖动画面中的沙发调节摆放位置
+                        <Monitor className="w-3 h-3 text-[#B8975A]" /> 系统会自动选择合理落位，拖动仅作为软参考
                       </span>
                     </div>
                   )}

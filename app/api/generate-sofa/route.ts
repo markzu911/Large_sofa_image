@@ -15,11 +15,13 @@ function buildPrompt({
   height,
   lighting,
   customPrompt,
+  placementHint,
 }: {
   angle: string;
   height: string;
   lighting: string;
   customPrompt: string;
+  placementHint: string;
 }) {
   return `
 你是一位极其严谨的专业家居电商摄影师和空间合成专家。
@@ -36,17 +38,24 @@ function buildPrompt({
 
 【房间融合逻辑 - 真实摄影棚质感】
 1. 【房间参考图】仅用于提供背景空间框架、墙面颜色、地面材质、光线方向、窗户布局、其他既有家具风格和整体氛围。
-2. 将沙发摆放在房间中合理的地面位置，保持完美的透视比例与空间深度，看起来像是一开始就摆在那里。
-3. 必须生成沙发的真实接触阴影和投射阴影，绝不能有生硬抠图感。
-4. 沙发本身的受光方向、高光、阴影必须与房间参考图中的光源方向完全吻合。
-5. 当前设置：
+2. 必须先判断房间里的真实可摆放区域：地面平面、主墙面、地毯/茶几/电视墙/窗户/动线关系。把沙发放在最合理的客厅座位区，不要随机放在画面中央、角落、门口、窗前遮挡处或漂浮在墙面上。
+3. 沙发落位优先级：
+   - 有地毯或茶几时，沙发应与地毯/茶几形成自然会客区，前沿与茶几保持合理距离。
+   - 有主背景墙或电视墙时，沙发背部应平行或近似平行于主墙/地板透视线。
+   - 没有明确家具时，选择画面下半部可见地面中最稳定的区域，保持四脚/底座完整接触地面。
+   - 绝不能挡住门洞、主要通道、窗户主体或已有核心家具。
+4. 必须按房间透视缩放沙发大小，近大远小；底座必须贴合地面透视线，不能悬浮、歪斜、穿墙或压在不合理物体上。
+5. 必须生成沙发的真实接触阴影和投射阴影，阴影方向、软硬程度和长度要与房间光源一致，绝不能有生硬抠图感。
+6. 沙发本身的受光方向、高光、阴影必须与房间参考图中的光源方向完全吻合。
+7. 当前设置：
    - 生成视角: ${angle}
    - 镜头高度: ${height}
    - 环境光线: ${lighting}
+   - 落位参考: ${placementHint}
    ${customPrompt ? `- 附加氛围描述: ${customPrompt}` : ''}
 
 【生成镜头与画面要求】
-1. 构图：沙发完整入镜，作为绝对画面主体，占据中景位置。
+1. 构图：根据所选远景/中景/近景合理决定沙发画面占比，但必须保留清晰的地面接触关系和真实空间深度。
 2. 画质：高端电商主图级别，照片级真实摄影，真实阴影，真实比例，单张完整照片。
 3. 限制：画面中绝对不能出现任何文字、水印、额外品牌LOGO、人物、多图拼接、分屏、漫画插画风格。
 
@@ -69,6 +78,8 @@ export async function POST(req: Request) {
       aspectRatio = '4:3',
       imageSize = '1K',
       customPrompt = '',
+      placementX = 0.5,
+      placementY = 0.68,
     } = body;
 
     if (!productImage || !roomImage) {
@@ -112,7 +123,15 @@ export async function POST(req: Request) {
           { inlineData: { data: productData.data, mimeType: productData.mimeType } },
           { text: '【房间参考图】仅用于空间结构、光线、地面、墙面和整体氛围参考。' },
           { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
-          { text: buildPrompt({ angle, height, lighting, customPrompt }) },
+          {
+            text: buildPrompt({
+              angle,
+              height,
+              lighting,
+              customPrompt,
+              placementHint: `用户预览锚点约为画面 X=${Math.round(Number(placementX) * 100)}%, Y=${Math.round(Number(placementY) * 100)}%。这只是软参考；如果该位置不在真实地面可摆放区域，请自动选择更合理的客厅座位区。`,
+            }),
+          },
         ],
         aspectRatio,
         imageSize,
@@ -140,9 +159,13 @@ export async function POST(req: Request) {
         return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {
         return Response.json({
-          success: false,
-          errorMessage: `生图成功，但SaaS保存失败，结果未入库: ${saasErr.message || saasErr}`,
-        }, { status: 502 });
+          success: true,
+          image: `data:${mimeType};base64,${generatedBase64}`,
+          modelUsed,
+          info: infoText,
+          savedToSaas: false,
+          warning: `生图成功，但SaaS保存失败，已先返回临时预览图: ${saasErr.message || saasErr}`,
+        });
       }
     }
 
