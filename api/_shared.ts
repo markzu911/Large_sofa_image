@@ -3,8 +3,8 @@ import { GoogleGenAI } from '@google/genai';
 export const MAX_INPUT_IMAGE_BYTES = 2 * 1024 * 1024;
 export const AI_GENERATION_TIMEOUT_MS = Number(process.env.AI_GENERATION_TIMEOUT_MS || 32000);
 export const SAAS_SHORT_TIMEOUT_MS = Number(process.env.SAAS_SHORT_TIMEOUT_MS || 8000);
-export const SAAS_UPLOAD_TIMEOUT_MS = 120000;
-export const SAAS_SAVE_TIMEOUT_MS = Number(process.env.SAAS_SAVE_TIMEOUT_MS || 18000);
+export const SAAS_UPLOAD_TIMEOUT_MS = Number(process.env.SAAS_UPLOAD_TIMEOUT_MS || 45000);
+export const SAAS_SAVE_TIMEOUT_MS = Number(process.env.SAAS_SAVE_TIMEOUT_MS || 50000);
 export const SAAS_ORIGIN = normalizeSaasUrl(process.env.SAAS_ORIGIN || 'http://aibigtree.com');
 
 const TRANSIENT_ERROR_PATTERN = /503|504|429|UNAVAILABLE|RESOURCE_EXHAUSTED|timeout|Timeout|high demand/i;

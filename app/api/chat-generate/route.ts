@@ -1,10 +1,7 @@
 import {
-  SAAS_SAVE_TIMEOUT_MS,
   generateImageWithGemini,
   getBase64FromUrlOrData,
-  saveGeneratedImageToSaas,
   verifyBeforeGenerate,
-  withTimeout,
 } from '../../../api/_shared';
 
 export const runtime = 'nodejs';
@@ -105,29 +102,14 @@ ${prompt.trim()}
     }
 
     if (isSaaS) {
-      try {
-        const savedImage = await withTimeout(
-          saveGeneratedImageToSaas({
-            userId,
-            toolId,
-            generatedBase64,
-            mimeType,
-            saasInfo,
-          }),
-          SAAS_SAVE_TIMEOUT_MS,
-          `SaaS保存超时(${Math.round(SAAS_SAVE_TIMEOUT_MS / 1000)}s)，请稍后重试`
-        );
-        return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
-      } catch (saasErr: any) {
-        return Response.json({
-          success: true,
-          image: `data:${mimeType};base64,${generatedBase64}`,
-          modelUsed,
-          info: infoText,
-          savedToSaas: false,
-          warning: `生图成功，但SaaS保存失败，已先返回临时预览图: ${saasErr.message || saasErr}`,
-        });
-      }
+      return Response.json({
+        success: true,
+        image: `data:${mimeType};base64,${generatedBase64}`,
+        modelUsed,
+        info: infoText,
+        savedToSaas: false,
+        needsSaasSave: true,
+      });
     }
 
     return Response.json({

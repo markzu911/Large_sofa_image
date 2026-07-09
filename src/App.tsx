@@ -310,6 +310,9 @@ const readApiResponse = async (response: Response, fallbackLabel: string) => {
   return data;
 };
 
+const shouldSaveToSaas = (userId: string | null, toolId: string | null) =>
+  !!(userId && toolId && !String(userId).startsWith('mock_'));
+
 const compressImage = (dataUrl: string, maxDim = 1280, quality = 0.82, maxBytes = 900 * 1024): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -500,6 +503,30 @@ export default function App() {
       actions: CHAT_WELCOME_ACTIONS,
     },
   ]);
+
+  const saveResultToSaas = async (image: string) => {
+    if (!shouldSaveToSaas(userId, toolId)) return null;
+
+    const response = await fetch('/api/save-result', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        userId,
+        toolId,
+        saasInfo: {
+          ...saasInfo,
+          userId,
+          toolId,
+        },
+        image,
+      }),
+    });
+    const data = await readApiResponse(response, '保存生成结果');
+    if (!data.success) {
+      throw new Error(data.errorMessage || data.error || '保存生成结果失败');
+    }
+    return data;
+  };
 
   // Dynamic loading and progress states
   const [elapsedTime, setElapsedTime] = useState<number>(0);
@@ -853,7 +880,21 @@ export default function App() {
         // Wait a small moment to let user appreciate the 100% complete state
         await new Promise(r => setTimeout(r, 450));
         setResultImage(data.image);
-        if (data.warning) {
+        if (data.needsSaasSave || data.savedToSaas === false) {
+          setErrorMessage('图片已生成，正在保存到 SaaS 图片库...');
+          setActiveLogs(prev => [...prev, `[SaaS] 💾 图片已生成，正在执行独立保存入库...`]);
+          try {
+            const savedData = await saveResultToSaas(data.image);
+            if (savedData?.image) {
+              setResultImage(savedData.image);
+            }
+            setErrorMessage(null);
+            setActiveLogs(prev => [...prev, `[完成] ✅ SaaS 图片库保存成功。`]);
+          } catch (saveErr: any) {
+            setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${saveErr.message || saveErr}`);
+            setActiveLogs(prev => [...prev, `[警告] SaaS 保存失败，当前显示临时预览图。`]);
+          }
+        } else if (data.warning) {
           setErrorMessage(data.warning);
         }
       } else if (data.generatedPreview) {
@@ -1020,6 +1061,9 @@ export default function App() {
 
       const data = await readApiResponse(response, '对话生图');
       if (data.success && data.image) {
+        const initialNote = data.needsSaasSave || data.savedToSaas === false
+          ? '图片已生成，正在保存到 SaaS 图片库...'
+          : data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。';
         updateChatMessage(loadingId, {
           content: '',
           generation: {
@@ -1028,7 +1072,7 @@ export default function App() {
             image: data.image,
             shot: chatShot,
             resolution: chatResolution,
-            note: data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。',
+            note: initialNote,
           },
           actions: [
             { type: 'generate', label: '再生成一版', description: '保留当前设置重新出图' },
@@ -1037,6 +1081,37 @@ export default function App() {
           ],
         });
         setResultImage(data.image);
+        if (data.needsSaasSave || data.savedToSaas === false) {
+          setErrorMessage('图片已生成，正在保存到 SaaS 图片库...');
+          try {
+            const savedData = await saveResultToSaas(data.image);
+            const savedImage = savedData?.image || data.image;
+            updateChatMessage(loadingId, {
+              generation: {
+                status: 'success',
+                title: '生成完成',
+                image: savedImage,
+                shot: chatShot,
+                resolution: chatResolution,
+                note: '已保存到 SaaS 图片库。',
+              },
+            });
+            setResultImage(savedImage);
+            setErrorMessage(null);
+          } catch (saveErr: any) {
+            updateChatMessage(loadingId, {
+              generation: {
+                status: 'success',
+                title: '生成完成',
+                image: data.image,
+                shot: chatShot,
+                resolution: chatResolution,
+                note: `SaaS保存失败，当前为临时预览图: ${saveErr.message || saveErr}`,
+              },
+            });
+            setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${saveErr.message || saveErr}`);
+          }
+        }
       } else if (data.generatedPreview) {
         updateChatMessage(loadingId, {
           content: '',
