@@ -41,6 +41,7 @@ type ChatGeneration = {
   image?: string | null;
   error?: string;
   note?: string;
+  saveScheduled?: boolean;
   needsSaasSave?: boolean;
   saveError?: string;
   saveStep?: string;
@@ -115,7 +116,8 @@ const SHOT_PRESETS = [
   }
 ] as const;
 
-const ROOM_STRUCTURE_GUIDE = '房间构造约束：锁定原房间墙体、窗户/窗帘、门洞、电视/媒体墙、固定柜体、吊顶/梁、地面纹理方向和整体空间比例；原沙发、单椅、边几、茶几、抱枕、地毯等可移动家具可以被商品合理替换或轻微调整，但不能重建、翻转、旋转或重排房间骨架。';
+const ROOM_STRUCTURE_GUIDE = '房间构造约束：房间参考图是唯一空间来源，必须锁定原房间墙体、窗户/窗帘、门洞、电视/媒体墙、固定柜体、吊顶/梁、地面纹理方向、空旷区域和整体空间比例；原沙发、单椅、边几、茶几、抱枕、地毯等可移动家具可以被商品合理替换或轻微调整，但不能重建、翻转、旋转或重排房间骨架，不能新增产品图里的整面柜墙/书架/灯具/门洞。';
+const PRODUCT_BACKGROUND_ISOLATION_GUIDE = '产品图隔离约束：产品参考图只用于提取沙发本体的款式、轮廓、比例、材质、颜色和纹理；必须完全忽略产品图里的房间背景、墙柜、书架、木饰面、吊顶灯带、厨房、门洞、窗户、落地灯、茶几、玩偶、地毯、装饰和地面材质，绝对不要把这些元素迁移到房间参考图。';
 const PRODUCT_VIEW_GUIDE = '商品视角约束：可以在同一个真实房间内移动机位，选择沙发正面、侧面或45度斜侧等更适合展示的角度；如果角度与房间结构冲突，优先保持房间构造正确。';
 
 const CHAT_WELCOME_ACTIONS: ChatAction[] = [
@@ -317,6 +319,13 @@ const getDataUrlByteSize = (dataUrl: string) => {
 };
 
 const readApiResponse = async (response: Response, fallbackLabel: string) => {
+  if (response.status === 413) {
+    return {
+      success: false,
+      errorMessage: `${fallbackLabel}请求体过大。已改用后端保存链路，请重新生成；如果仍出现，请降低清晰度或减少参考图尺寸。`,
+    };
+  }
+
   const text = await response.text();
   let data: any = {};
 
@@ -955,7 +964,7 @@ export default function App() {
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
         placementX: sofaX,
         placementY: sofaY,
-        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，预览锚点只作为软参考，不要机械照搬。`
+        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_BACKGROUND_ISOLATION_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，预览锚点只作为软参考，不要机械照搬。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -995,7 +1004,12 @@ export default function App() {
         setActiveLogs(prev => [...prev, `[完成] 🎉 空间深度摄影合成成功！图片数据打包回传完毕。`]);
         setResultImage(data.image);
         setGenerating(false);
-        if (data.needsSaasSave || data.savedToSaas === false) {
+        if (data.saveScheduled) {
+          setPendingSaasImage(null);
+          setPendingSaasSkipConsume(false);
+          setErrorMessage('图片已生成，可预览和下载；SaaS 图片库保存已由后端继续执行，避免大图二次上传导致 413。');
+          setActiveLogs(prev => [...prev, `[SaaS] 💾 已交给后端继续保存入库，不再从浏览器二次上传大图。`]);
+        } else if (data.needsSaasSave || data.savedToSaas === false) {
           const skipConsume = didConsumeBeforeSaveFailure(data);
           setPendingSaasImage(data.image);
           setPendingSaasSkipConsume(skipConsume);
@@ -1273,7 +1287,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、遮挡动线或悬浮。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_BACKGROUND_ISOLATION_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、遮挡动线或悬浮。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
@@ -1284,7 +1298,9 @@ export default function App() {
 
       const data = await readApiResponse(response, '对话生图');
       if (data.success && data.image) {
-        const initialNote = data.needsSaasSave || data.savedToSaas === false
+        const initialNote = data.saveScheduled
+          ? '图片已生成，可预览和下载；后端正在继续保存到 SaaS 图片库。'
+          : data.needsSaasSave || data.savedToSaas === false
           ? '图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...'
           : data.savedToSaas ? '已保存到 SaaS 图片库。' : data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。';
         updateChatMessage(loadingId, {
@@ -1296,7 +1312,8 @@ export default function App() {
             shot: chatShot,
             resolution: chatResolution,
             note: initialNote,
-            needsSaasSave: data.needsSaasSave || data.savedToSaas === false,
+            saveScheduled: Boolean(data.saveScheduled),
+            needsSaasSave: !data.saveScheduled && (data.needsSaasSave || data.savedToSaas === false),
             saveStep: data.saveStep,
             saveConsumed: didConsumeBeforeSaveFailure(data),
           },
@@ -1309,7 +1326,14 @@ export default function App() {
         if (resultRunRef.current === runId) {
           setResultImage(data.image);
         }
-        if (data.needsSaasSave || data.savedToSaas === false) {
+        if (data.saveScheduled) {
+          if (resultRunRef.current === runId) {
+            setPendingSaasImage(null);
+            setPendingSaasSkipConsume(false);
+            setErrorMessage('图片已生成，可预览和下载；SaaS 图片库保存已由后端继续执行，避免大图二次上传导致 413。');
+            setChatGenerating(false);
+          }
+        } else if (data.needsSaasSave || data.savedToSaas === false) {
           const skipConsume = didConsumeBeforeSaveFailure(data);
           if (resultRunRef.current === runId) {
             setPendingSaasImage(data.image);

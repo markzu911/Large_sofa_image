@@ -1,11 +1,56 @@
+import { after } from 'next/server';
 import {
   generateImageWithGemini,
   getBase64FromUrlOrData,
+  saveGeneratedImageToSaas,
+  type SaasInfo,
   verifyBeforeGenerate,
 } from '../../../api/_shared';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
+
+function scheduleSaasSave({
+  userId,
+  toolId,
+  saasInfo,
+  generatedBase64,
+  mimeType,
+}: {
+  userId: string;
+  toolId: string;
+  saasInfo?: SaasInfo;
+  generatedBase64: string;
+  mimeType: string;
+}) {
+  const saveTask = async () => {
+    try {
+      const saved = await saveGeneratedImageToSaas({
+        userId,
+        toolId,
+        generatedBase64,
+        mimeType,
+        saasInfo,
+      });
+      console.info('SaaS background save success:', {
+        recordId: saved.recordId,
+        url: saved.url,
+      });
+    } catch (err: any) {
+      console.error('SaaS background save failed:', {
+        saveStep: err.saveStep,
+        message: err.message,
+      });
+    }
+  };
+
+  try {
+    after(saveTask);
+  } catch (err: any) {
+    console.error('Failed to schedule SaaS background save, running best-effort fallback:', err.message || err);
+    void saveTask();
+  }
+}
 
 function buildPrompt({
   angle,
@@ -26,20 +71,26 @@ function buildPrompt({
 }) {
   return `
 你是一位极其严谨的专业家居电商摄影师和空间合成专家。
-你的任务是将提供的【产品参考图】（第一张沙发）完美、无缝地融入到【房间参考图】（第二张客厅/房间空间）中。
+你的任务是将提供的【产品参考图】中的沙发本体，完美、无缝地融入到【房间参考图】的真实客厅/房间空间中。
+
+【参考图角色隔离 - 绝对最高优先级】
+1. 【房间参考图】是唯一的房间结构、墙面、窗户、门洞、电视墙/媒体墙、固定柜体、地面、吊顶和光线来源。
+2. 【产品参考图】只允许用于提取沙发本体：款式、轮廓、比例、材质、颜色、纹理和细节。
+3. 必须完全忽略【产品参考图】里的背景空间和其他物体，包括但不限于墙面、柜墙、书架、木饰面、吊顶灯带、厨房/门洞、窗户、落地灯、茶几、玩偶、地毯、装饰品和地面材质。
+4. 绝对禁止把【产品参考图】里的背景、家具、墙柜、灯具或空间布局迁移到最终画面。最终画面的房间必须一眼看出仍然是【房间参考图】里的那个房间。
 
 【产品还原逻辑 - 绝对最高优先级】
-1. 必须完全保留并严密还原【产品参考图】中沙发的全部造型与物理特征：
+1. 必须完全保留并严密还原【产品参考图】中“沙发本体”的全部造型与物理特征：
    - 整体款式、轮廓造型、座位数量必须100%一致。
    - 扶手设计和结构、靠背高度、倾斜角度。
    - 缝线走向、褶皱痕迹、坐垫数量和厚度。
    - 布料或皮革的真实材质纹理与原本的颜色。
    - 腿部结构（无论是金属、木质还是隐藏式底座）。
-2. 绝对不允许对沙发进行款式改装或合并其他设计。
+2. 绝对不允许对沙发进行款式改装或合并其他设计；也绝对不要复制产品图里的房间背景。
 
 【房间构造锁定 - 绝对最高优先级】
-1. 【房间参考图】代表一个真实房间，必须锁定原房间的墙体关系、窗户/窗帘位置、门洞、电视墙/媒体墙朝向、固定柜体、吊顶/梁、地面纹理方向、墙角和整体空间比例。
-2. 绝对禁止重建、翻转、旋转或重新装修房间；禁止把电视/电视墙移动到另一面墙、把电视朝向改成窗户、交换窗户与电视墙位置、改变墙体开口、改变窗户数量或重排房间骨架。
+1. 【房间参考图】代表一个真实房间，必须锁定原房间的墙体关系、窗户/窗帘位置、门洞、电视墙/媒体墙朝向、固定柜体、吊顶/梁、地面纹理方向、墙角、空旷区域和整体空间比例。
+2. 绝对禁止重建、翻转、旋转或重新装修房间；禁止把电视/电视墙移动到另一面墙、把电视朝向改成窗户、交换窗户与电视墙位置、改变墙体开口、改变窗户数量、增加新的整面柜墙/书架或重排房间骨架。
 3. 可以为了展示产品，合理替换或移除原图中的可移动家具，例如原沙发、单椅、边几、茶几、抱枕、地毯、临时装饰物；但替换后必须仍然像在同一个房间里拍摄，不能改变不可移动的建筑结构和固定空间参照。
 4. 如果新镜头需要正面、侧面或45度斜侧商品视角，可以让摄影师在同一真实房间内移动机位拍摄，但相机变化必须符合原房间结构关系，不能生成一个布局相似但电视墙/窗户/墙体关系已经改变的新房间。
 5. 当商品视角与房间结构发生冲突时，优先保持房间构造正确，再选择最接近且合理的商品拍摄角度。
@@ -140,10 +191,10 @@ export async function POST(req: Request) {
     try {
       ({ generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
         parts: [
-          { text: '【产品参考图】必须优先还原此沙发的款式、比例、材质、颜色和细节。' },
-          { inlineData: { data: productData.data, mimeType: productData.mimeType } },
-          { text: '【房间参考图】仅用于空间结构、光线、地面、墙面和整体氛围参考。' },
+          { text: '【房间参考图】唯一空间来源：必须锁定此房间的墙体、窗户、门洞、电视墙/媒体墙、固定柜体、吊顶、地面和光线。' },
           { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
+          { text: '【产品参考图】只提取沙发本体的款式、比例、材质、颜色和细节；必须忽略这张图里的房间背景、柜墙、灯具、茶几和所有其他物体。' },
+          { inlineData: { data: productData.data, mimeType: productData.mimeType } },
           {
             text: buildPrompt({
               angle,
@@ -167,13 +218,21 @@ export async function POST(req: Request) {
     }
 
     if (isSaaS) {
+      scheduleSaasSave({
+        userId,
+        toolId,
+        saasInfo,
+        generatedBase64,
+        mimeType,
+      });
       return Response.json({
         success: true,
         image: `data:${mimeType};base64,${generatedBase64}`,
         modelUsed,
         info: infoText,
         savedToSaas: false,
-        needsSaasSave: true,
+        saveScheduled: true,
+        needsSaasSave: false,
       });
     }
 
