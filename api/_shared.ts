@@ -4,10 +4,53 @@ export const MAX_INPUT_IMAGE_BYTES = 2 * 1024 * 1024;
 export const AI_GENERATION_TIMEOUT_MS = 120000;
 export const SAAS_SHORT_TIMEOUT_MS = 30000;
 export const SAAS_UPLOAD_TIMEOUT_MS = 120000;
-export const SAAS_ORIGIN = (process.env.SAAS_ORIGIN || 'https://aibigtree.com').trim().replace(/\/$/, '');
+export const SAAS_ORIGIN = normalizeSaasUrl(process.env.SAAS_ORIGIN || 'http://aibigtree.com');
 
 const TRANSIENT_ERROR_PATTERN = /503|504|429|UNAVAILABLE|RESOURCE_EXHAUSTED|timeout|Timeout|high demand/i;
 let aiClient: GoogleGenAI | null = null;
+
+export type SaasInfo = {
+  userId?: string | null;
+  toolId?: string | null;
+  apiBaseUrl?: string;
+  launchUrl?: string;
+  verifyUrl?: string;
+  consumeUrl?: string;
+  uploadTokenUrl?: string;
+  uploadCommitUrl?: string;
+};
+
+export function getSaasUrl(saasInfo: SaasInfo | undefined, specificUrl: keyof SaasInfo, defaultPath: string) {
+  const directUrl = saasInfo?.[specificUrl];
+  if (typeof directUrl === 'string' && directUrl.trim()) {
+    return normalizeSaasUrl(directUrl);
+  }
+
+  let origin = normalizeSaasUrl(saasInfo?.apiBaseUrl || SAAS_ORIGIN);
+  if (!saasInfo?.apiBaseUrl && saasInfo?.consumeUrl) {
+    try {
+      origin = new URL(normalizeSaasUrl(saasInfo.consumeUrl)).origin;
+    } catch {}
+  }
+
+  return normalizeSaasUrl(origin + defaultPath);
+}
+
+function normalizeSaasUrl(value: string) {
+  const trimmed = value.trim().replace(/\/$/, '');
+  try {
+    const url = new URL(trimmed);
+    if (
+      url.protocol === 'https:' &&
+      (url.hostname === 'aibigtree.com' || url.hostname === 'www.aibigtree.com')
+    ) {
+      url.protocol = 'http:';
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return trimmed;
+  }
+}
 
 export async function getRequestBody(req: any) {
   if (req.body) {
@@ -76,6 +119,10 @@ export async function fetchWithTimeout(url: string, options: RequestInit, timeou
   try {
     return await fetch(url, {
       ...options,
+      headers: {
+        'User-Agent': 'large-sofa-image-tool',
+        ...(options.headers || {}),
+      },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err: any) {
@@ -84,7 +131,8 @@ export async function fetchWithTimeout(url: string, options: RequestInit, timeou
     if (isTimeout) {
       throw new Error(`${stepName}超时(${Math.round(timeoutMs / 1000)}s)，请稍后重试`);
     }
-    throw err;
+    const cause = err?.cause ? `；原因: ${err.cause?.message || err.cause}` : '';
+    throw new Error(`${stepName}网络请求失败: ${message}${cause}`);
   }
 }
 
@@ -173,8 +221,8 @@ export async function getBase64FromUrlOrData(input: string): Promise<{ data: str
   };
 }
 
-export async function verifyBeforeGenerate(userId: string, toolId: string) {
-  const res = await fetchWithTimeout(`${SAAS_ORIGIN}/api/tool/verify`, {
+export async function verifyBeforeGenerate(userId: string, toolId: string, saasInfo?: SaasInfo) {
+  const res = await fetchWithTimeout(getSaasUrl(saasInfo, 'verifyUrl', '/api/tool/verify'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, toolId }),
@@ -182,8 +230,8 @@ export async function verifyBeforeGenerate(userId: string, toolId: string) {
   return readJsonResponse(res, '积分校验');
 }
 
-export async function consumePoints(userId: string, toolId: string) {
-  const res = await fetchWithTimeout(`${SAAS_ORIGIN}/api/tool/consume`, {
+export async function consumePoints(userId: string, toolId: string, saasInfo?: SaasInfo) {
+  const res = await fetchWithTimeout(getSaasUrl(saasInfo, 'consumeUrl', '/api/tool/consume'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, toolId }),
@@ -191,8 +239,8 @@ export async function consumePoints(userId: string, toolId: string) {
   return readJsonResponse(res, '扣费');
 }
 
-export async function launchTool(userId: string, toolId: string) {
-  const res = await fetchWithTimeout(`${SAAS_ORIGIN}/api/tool/launch`, {
+export async function launchTool(userId: string, toolId: string, saasInfo?: SaasInfo) {
+  const res = await fetchWithTimeout(getSaasUrl(saasInfo, 'launchUrl', '/api/tool/launch'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, toolId }),
@@ -200,8 +248,8 @@ export async function launchTool(userId: string, toolId: string) {
   return readJsonResponse(res, '启动工具');
 }
 
-async function getDirectToken(userId: string, toolId: string, fileSize: number, mimeType: string) {
-  const res = await fetchWithTimeout(`${SAAS_ORIGIN}/api/upload/direct-token`, {
+async function getDirectToken(userId: string, toolId: string, fileSize: number, mimeType: string, saasInfo?: SaasInfo) {
+  const res = await fetchWithTimeout(getSaasUrl(saasInfo, 'uploadTokenUrl', '/api/upload/direct-token'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -230,8 +278,8 @@ async function uploadToOss(uploadUrl: string, method: string, headers: any, imag
   }
 }
 
-async function commitUpload(userId: string, toolId: string, objectKey: string, fileSize: number) {
-  const res = await fetchWithTimeout(`${SAAS_ORIGIN}/api/upload/commit`, {
+async function commitUpload(userId: string, toolId: string, objectKey: string, fileSize: number, saasInfo?: SaasInfo) {
+  const res = await fetchWithTimeout(getSaasUrl(saasInfo, 'uploadCommitUrl', '/api/upload/commit'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -318,19 +366,21 @@ export async function saveGeneratedImageToSaas({
   toolId,
   generatedBase64,
   mimeType,
+  saasInfo,
 }: {
   userId: string;
   toolId: string;
   generatedBase64: string;
   mimeType: string;
+  saasInfo?: SaasInfo;
 }) {
-  await consumePoints(userId, toolId);
+  await consumePoints(userId, toolId, saasInfo);
 
   const imageBuffer = Buffer.from(generatedBase64, 'base64');
   const fileSize = imageBuffer.length;
-  const tokenData = await getDirectToken(userId, toolId, fileSize, mimeType);
+  const tokenData = await getDirectToken(userId, toolId, fileSize, mimeType, saasInfo);
   await uploadToOss(tokenData.uploadUrl, tokenData.method, tokenData.headers, imageBuffer, mimeType);
-  const commitData = await commitUpload(userId, toolId, tokenData.objectKey, fileSize);
+  const commitData = await commitUpload(userId, toolId, tokenData.objectKey, fileSize, saasInfo);
 
   return {
     image: commitData.image?.url || commitData.url || `data:${mimeType};base64,${generatedBase64}`,

@@ -5,7 +5,7 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const { userId, toolId } = await req.json();
+    const { userId, toolId, saasInfo } = await req.json();
 
     if (!userId || !toolId) {
       return Response.json({
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const data = await launchTool(userId, toolId);
+    const data = await launchTool(userId, toolId, saasInfo);
     return Response.json(data);
   } catch (err: any) {
     return Response.json({

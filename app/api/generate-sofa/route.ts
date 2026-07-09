@@ -58,6 +58,7 @@ export async function POST(req: Request) {
     const {
       userId,
       toolId,
+      saasInfo,
       productImage,
       roomImage,
       angle = '45度侧切正面',
@@ -74,25 +75,52 @@ export async function POST(req: Request) {
 
     const isSaaS = userId && toolId && !String(userId).startsWith('mock_');
     if (isSaaS) {
-      await verifyBeforeGenerate(userId, toolId);
+      try {
+        await verifyBeforeGenerate(userId, toolId, saasInfo);
+      } catch (verifyErr: any) {
+        return Response.json({
+          success: false,
+          errorMessage: `前置积分校验失败: ${verifyErr.message || verifyErr}`,
+        }, { status: 502 });
+      }
     }
 
-    const [productData, roomData] = await Promise.all([
-      getBase64FromUrlOrData(productImage),
-      getBase64FromUrlOrData(roomImage),
-    ]);
+    let productData;
+    let roomData;
+    try {
+      [productData, roomData] = await Promise.all([
+        getBase64FromUrlOrData(productImage),
+        getBase64FromUrlOrData(roomImage),
+      ]);
+    } catch (imageErr: any) {
+      return Response.json({
+        success: false,
+        errorMessage: `读取参考图失败: ${imageErr.message || imageErr}`,
+      }, { status: 400 });
+    }
 
-    const { generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
-      parts: [
-        { text: '【产品参考图】必须优先还原此沙发的款式、比例、材质、颜色和细节。' },
-        { inlineData: { data: productData.data, mimeType: productData.mimeType } },
-        { text: '【房间参考图】仅用于空间结构、光线、地面、墙面和整体氛围参考。' },
-        { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
-        { text: buildPrompt({ angle, height, lighting, customPrompt }) },
-      ],
-      aspectRatio,
-      imageSize,
-    });
+    let generatedBase64;
+    let mimeType;
+    let modelUsed;
+    let infoText;
+    try {
+      ({ generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
+        parts: [
+          { text: '【产品参考图】必须优先还原此沙发的款式、比例、材质、颜色和细节。' },
+          { inlineData: { data: productData.data, mimeType: productData.mimeType } },
+          { text: '【房间参考图】仅用于空间结构、光线、地面、墙面和整体氛围参考。' },
+          { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
+          { text: buildPrompt({ angle, height, lighting, customPrompt }) },
+        ],
+        aspectRatio,
+        imageSize,
+      }));
+    } catch (aiErr: any) {
+      return Response.json({
+        success: false,
+        errorMessage: `AI生成失败: ${aiErr.message || aiErr}`,
+      }, { status: 502 });
+    }
 
     if (isSaaS) {
       try {
@@ -101,6 +129,7 @@ export async function POST(req: Request) {
           toolId,
           generatedBase64,
           mimeType,
+          saasInfo,
         });
         return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {

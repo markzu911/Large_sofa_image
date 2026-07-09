@@ -14,6 +14,7 @@ export async function POST(req: Request) {
     const {
       userId,
       toolId,
+      saasInfo,
       prompt,
       productImage,
       roomImage,
@@ -28,18 +29,29 @@ export async function POST(req: Request) {
 
     const isSaaS = userId && toolId && !String(userId).startsWith('mock_');
     if (isSaaS) {
-      await verifyBeforeGenerate(userId, toolId);
+      try {
+        await verifyBeforeGenerate(userId, toolId, saasInfo);
+      } catch (verifyErr: any) {
+        return Response.json({
+          success: false,
+          errorMessage: `前置积分校验失败: ${verifyErr.message || verifyErr}`,
+        }, { status: 502 });
+      }
     }
 
     const parts: any[] = [];
     if (productImage) {
-      const productData = await getBase64FromUrlOrData(productImage);
+      const productData = await getBase64FromUrlOrData(productImage).catch((imageErr: any) => {
+        throw new Error(`读取沙发参考图失败: ${imageErr.message || imageErr}`);
+      });
       parts.push({ text: '【沙发/商品参考图】最高优先级：保留款式、轮廓、颜色、材质纹理、缝线和结构比例。' });
       parts.push({ inlineData: { data: productData.data, mimeType: productData.mimeType } });
     }
 
     if (roomImage) {
-      const roomData = await getBase64FromUrlOrData(roomImage);
+      const roomData = await getBase64FromUrlOrData(roomImage).catch((imageErr: any) => {
+        throw new Error(`读取房间参考图失败: ${imageErr.message || imageErr}`);
+      });
       parts.push({ text: '【房间/场景参考图】用于空间结构、地面墙面、光线方向、镜头透视和整体氛围参考。' });
       parts.push({ inlineData: { data: roomData.data, mimeType: roomData.mimeType } });
     }
@@ -71,11 +83,22 @@ ${prompt.trim()}
 `,
     });
 
-    const { generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
-      parts,
-      aspectRatio,
-      imageSize,
-    });
+    let generatedBase64;
+    let mimeType;
+    let modelUsed;
+    let infoText;
+    try {
+      ({ generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
+        parts,
+        aspectRatio,
+        imageSize,
+      }));
+    } catch (aiErr: any) {
+      return Response.json({
+        success: false,
+        errorMessage: `AI生成失败: ${aiErr.message || aiErr}`,
+      }, { status: 502 });
+    }
 
     if (isSaaS) {
       try {
@@ -84,6 +107,7 @@ ${prompt.trim()}
           toolId,
           generatedBase64,
           mimeType,
+          saasInfo,
         });
         return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {

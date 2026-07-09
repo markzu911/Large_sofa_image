@@ -61,6 +61,19 @@ type ChatMessage = {
   imageCategory?: 'product' | 'room';
 };
 
+type SaasInfo = {
+  userId?: string | null;
+  toolId?: string | null;
+  context?: string;
+  prompt?: string[];
+  apiBaseUrl?: string;
+  launchUrl?: string;
+  verifyUrl?: string;
+  consumeUrl?: string;
+  uploadTokenUrl?: string;
+  uploadCommitUrl?: string;
+};
+
 const SHOT_PRESETS = [
   {
     id: 'far',
@@ -114,6 +127,16 @@ const getChatId = () => {
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
+
+const getSaasInfoKey = (info: SaasInfo) =>
+  [
+    info.apiBaseUrl,
+    info.launchUrl,
+    info.verifyUrl,
+    info.consumeUrl,
+    info.uploadTokenUrl,
+    info.uploadCommitUrl,
+  ].filter(Boolean).join('|');
 
 function ChatGenerationLoadingCard({ generation }: { generation: ChatGeneration }) {
   const [progress, setProgress] = useState(8);
@@ -329,6 +352,7 @@ export default function App() {
   // SaaS States
   const [userId, setUserId] = useState<string | null>(null);
   const [toolId, setToolId] = useState<string | null>(null);
+  const [saasInfo, setSaasInfo] = useState<SaasInfo>({});
   const [userInfo, setUserInfo] = useState<any>(null);
   const [toolInfo, setToolInfo] = useState<any>(null);
 
@@ -339,13 +363,45 @@ export default function App() {
     const urlToolId = params.get('toolId');
     if (urlUserId) setUserId(urlUserId);
     if (urlToolId) setToolId(urlToolId);
+    if (urlUserId || urlToolId) {
+      setSaasInfo((prev) => ({
+        ...prev,
+        userId: urlUserId || prev.userId,
+        toolId: urlToolId || prev.toolId,
+      }));
+    }
 
     // 2. Listen to SAAS_INIT message
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SAAS_INIT') {
-        const { userId: msgUserId, toolId: msgToolId } = event.data;
+        const {
+          userId: msgUserId,
+          toolId: msgToolId,
+          context,
+          prompt,
+          apiBaseUrl,
+          launchUrl,
+          verifyUrl,
+          consumeUrl,
+          uploadTokenUrl,
+          uploadCommitUrl,
+        } = event.data;
         if (msgUserId) setUserId(msgUserId);
         if (msgToolId) setToolId(msgToolId);
+        setSaasInfo({
+          userId: msgUserId || null,
+          toolId: msgToolId || null,
+          context: context && context !== 'null' && context !== 'undefined' ? context : '',
+          prompt: Array.isArray(prompt)
+            ? prompt.filter((item: unknown) => typeof item === 'string' && item !== 'null' && item !== 'undefined')
+            : [],
+          apiBaseUrl,
+          launchUrl,
+          verifyUrl,
+          consumeUrl,
+          uploadTokenUrl,
+          uploadCommitUrl,
+        });
       }
     };
     window.addEventListener('message', handleMessage);
@@ -361,7 +417,7 @@ export default function App() {
         const res = await fetch('/api/tool/launch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, toolId })
+          body: JSON.stringify({ userId, toolId, saasInfo: { ...saasInfo, userId, toolId } })
         });
         const data = await res.json();
         if (data.success && data.data) {
@@ -374,7 +430,7 @@ export default function App() {
     };
 
     fetchLaunchInfo();
-  }, [userId, toolId]);
+  }, [userId, toolId, getSaasInfoKey(saasInfo)]);
 
   // Image Upload States
   const [productImage, setProductImage] = useState<string | null>(null);
@@ -702,6 +758,11 @@ export default function App() {
       const requestPayload = {
         userId,
         toolId,
+        saasInfo: {
+          ...saasInfo,
+          userId,
+          toolId,
+        },
         productImage,
         roomImage,
         angle: currentPreset.angle,
@@ -900,6 +961,11 @@ export default function App() {
         body: JSON.stringify({
           userId,
           toolId,
+          saasInfo: {
+            ...saasInfo,
+            userId,
+            toolId,
+          },
           prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}`,
           productImage,
           roomImage,
