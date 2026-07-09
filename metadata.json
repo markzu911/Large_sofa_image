@@ -1,0 +1,6 @@
+{
+  "name": "沙发生图系统",
+  "description": "专业级家居电商沙发合成与空间摄影棚仿真系统，支持高清晰度云端融合渲染与空间对齐微调。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
