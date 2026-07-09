@@ -1,23 +1,39 @@
-import express from 'express';
-import { NextApiRequest, NextApiResponse } from 'next';
+import {
+  fetchWithTimeout,
+  getRequestBody,
+  isBlockedHostname,
+  readJsonResponse,
+  SAAS_ORIGIN,
+  sendJson,
+} from './_shared';
 
-// 1. Next.js API route config for 20mb limit
 export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '20mb',
-    },
-  },
+  maxDuration: 30,
 };
 
-// 2. Express router setup for 20mb limit if used in Express context
-const router = express.Router();
-router.use(express.json({ limit: '20mb' }));
-router.use(express.urlencoded({ limit: '20mb', extended: true }));
+export default async function handler(req: any, res: any) {
+  try {
+    const body = await getRequestBody(req);
+    const actualUrl = body.targetUrl || body.url;
 
-export { router };
+    if (!actualUrl) {
+      return sendJson(res, 200, { success: true, message: 'Proxy endpoint active' });
+    }
 
-// Default handler for Next.js compatibility
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  res.status(200).json({ status: 'ok', message: 'Proxy endpoint active with 20mb limit' });
+    const parsedTarget = new URL(actualUrl);
+    const allowedOrigins = new Set([new URL(SAAS_ORIGIN).origin]);
+    if (!allowedOrigins.has(parsedTarget.origin) || isBlockedHostname(parsedTarget.hostname)) {
+      return sendJson(res, 403, { success: false, error: 'Proxy target is not allowed' });
+    }
+
+    const proxyRes = await fetchWithTimeout(actualUrl, {
+      method: req.method || 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(body) : undefined,
+    }, 30000, '代理请求');
+    const data = await readJsonResponse(proxyRes, '代理请求');
+    return sendJson(res, proxyRes.status, data);
+  } catch (err: any) {
+    return sendJson(res, 500, { success: false, error: err.message || 'Proxy request failed' });
+  }
 }

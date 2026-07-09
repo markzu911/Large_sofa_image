@@ -246,7 +246,12 @@ function ChatGenerationResultCard({
   );
 }
 
-const compressImage = (dataUrl: string, maxDim = 1600): Promise<string> => {
+const getDataUrlByteSize = (dataUrl: string) => {
+  const base64 = dataUrl.split(',')[1] || '';
+  return Math.ceil((base64.length * 3) / 4);
+};
+
+const compressImage = (dataUrl: string, maxDim = 1280, quality = 0.82, maxBytes = 900 * 1024): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.src = dataUrl;
@@ -278,8 +283,38 @@ const compressImage = (dataUrl: string, maxDim = 1600): Promise<string> => {
       ctx.fillRect(0, 0, width, height);
 
       ctx.drawImage(img, 0, 0, width, height);
-      // High-quality JPEG compression preserves texture and style at 0.85 quality
-      const compressed = canvas.toDataURL('image/jpeg', 0.85);
+      let currentCanvas = canvas;
+      let currentQuality = quality;
+      let compressed = currentCanvas.toDataURL('image/jpeg', currentQuality);
+
+      for (let attempt = 0; attempt < 12 && getDataUrlByteSize(compressed) > maxBytes; attempt++) {
+        if (currentQuality > 0.48) {
+          currentQuality = Math.max(0.48, currentQuality - 0.08);
+          compressed = currentCanvas.toDataURL('image/jpeg', currentQuality);
+          continue;
+        }
+
+        const longestSide = Math.max(currentCanvas.width, currentCanvas.height);
+        if (longestSide <= 720) break;
+
+        const scale = Math.max(720 / longestSide, 0.84);
+        const nextWidth = Math.max(1, Math.round(currentCanvas.width * scale));
+        const nextHeight = Math.max(1, Math.round(currentCanvas.height * scale));
+        if (nextWidth === currentCanvas.width && nextHeight === currentCanvas.height) break;
+
+        const scaledCanvas = document.createElement('canvas');
+        scaledCanvas.width = nextWidth;
+        scaledCanvas.height = nextHeight;
+        const scaledCtx = scaledCanvas.getContext('2d');
+        if (!scaledCtx) break;
+        scaledCtx.fillStyle = '#FFFFFF';
+        scaledCtx.fillRect(0, 0, nextWidth, nextHeight);
+        scaledCtx.drawImage(currentCanvas, 0, 0, nextWidth, nextHeight);
+        currentCanvas = scaledCanvas;
+        currentQuality = 0.74;
+        compressed = currentCanvas.toDataURL('image/jpeg', currentQuality);
+      }
+
       resolve(compressed);
     };
     img.onerror = () => {
