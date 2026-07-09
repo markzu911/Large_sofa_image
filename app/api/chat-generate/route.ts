@@ -1,23 +1,16 @@
 import {
   generateImageWithGemini,
   getBase64FromUrlOrData,
-  getRequestBody,
   saveGeneratedImageToSaas,
-  sendJson,
   verifyBeforeGenerate,
-} from './_shared';
+} from '../../../api/_shared';
 
-export const config = {
-  maxDuration: 300,
-};
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return sendJson(res, 405, { success: false, errorMessage: 'Method not allowed' });
-  }
-
+export async function POST(req: Request) {
   try {
-    const body = await getRequestBody(req);
+    const body = await req.json();
     const {
       userId,
       toolId,
@@ -30,7 +23,7 @@ export default async function handler(req: any, res: any) {
     } = body;
 
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
-      return sendJson(res, 400, { success: false, errorMessage: '请输入对话生图需求' });
+      return Response.json({ success: false, errorMessage: '请输入对话生图需求' }, { status: 400 });
     }
 
     const isSaaS = userId && toolId && !String(userId).startsWith('mock_');
@@ -92,23 +85,16 @@ ${prompt.trim()}
           generatedBase64,
           mimeType,
         });
-        return sendJson(res, 200, {
-          success: true,
-          ...savedImage,
-          modelUsed,
-          info: infoText,
-        });
+        return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {
-        return sendJson(res, 502, {
+        return Response.json({
           success: false,
           errorMessage: `生图成功，但SaaS保存失败，结果未入库: ${saasErr.message || saasErr}`,
-          generatedPreview: `data:${mimeType};base64,${generatedBase64}`,
-          modelUsed,
-        });
+        }, { status: 502 });
       }
     }
 
-    return sendJson(res, 200, {
+    return Response.json({
       success: true,
       image: `data:${mimeType};base64,${generatedBase64}`,
       modelUsed,
@@ -116,10 +102,10 @@ ${prompt.trim()}
     });
   } catch (err: any) {
     const isKeyError = !process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY_NEXT && !process.env.API_KEY;
-    return sendJson(res, 500, {
+    return Response.json({
       success: false,
       isKeyError,
       errorMessage: err.message || '对话生图失败',
-    });
+    }, { status: 500 });
   }
 }

@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Upload,
@@ -752,38 +754,27 @@ export default function App() {
         }
       } else if (data.generatedPreview) {
         setProgressPercent(100);
-        setActiveLogs(prev => [...prev, `[系统] ⚠️ 云端图片已生成，但 SaaS 保存/入库失败。`]);
+        setActiveLogs(prev => [...prev, `[错误] 云端图片已生成，但 SaaS 保存/入库失败，结果未交付。`]);
         await new Promise(r => setTimeout(r, 350));
-        setResultImage(data.generatedPreview);
+        setResultImage(null);
         setErrorMessage(data.errorMessage || '图片已生成，但未保存到 SaaS 图片库。请稍后重试。');
       } else {
-        // Fallback: Export canvas composite directly
-        const canvas = canvasRef.current;
-        const fallbackImg = canvas ? canvas.toDataURL('image/png') : (productImage as string);
         setProgressPercent(100);
-        setActiveLogs(prev => [...prev, `[系统] ⚠️ 云端Imagen深度对齐失败，正在无缝切换至“本地重力投影对齐器”...`]);
-        await new Promise(r => setTimeout(r, 500));
-        
-        setResultImage(fallbackImg);
-
+        setActiveLogs(prev => [...prev, `[错误] 云端生图失败，未生成可交付图片。`]);
+        setResultImage(null);
         if (data.isKeyError) {
-          setErrorMessage('您的 Google AI Studio API 密钥未配置，系统已自动启用“本地空间对齐融合器”为您直接输出渲染合成大图。');
+          setErrorMessage('Google AI Studio API 密钥未配置或无权限，请检查 Vercel 环境变量 GEMINI_API_KEY。');
         } else {
-          setErrorMessage(data.errorMessage || '云端深度Imagen渲染失败，已无缝切换至“空间对齐合成器”输出。');
+          setErrorMessage(data.errorMessage || data.error || '云端生图失败，未生成可交付图片。');
         }
       }
     } catch (err: any) {
       clearInterval(timer);
       console.error(err);
-      const canvas = canvasRef.current;
-      const fallbackImg = canvas ? canvas.toDataURL('image/png') : (productImage as string);
-      
       setProgressPercent(100);
-      setActiveLogs(prev => [...prev, `[错误] ❌ 网络连接超时。已启用本地高精排版模式输出。`]);
-      await new Promise(r => setTimeout(r, 500));
-
-      setResultImage(fallbackImg);
-      setErrorMessage('网络连接受限，已使用本地高精合成器直接输出排版照片。');
+      setActiveLogs(prev => [...prev, `[错误] 请求失败，未生成可交付图片。`]);
+      setResultImage(null);
+      setErrorMessage(err.message || '请求失败，请检查 Vercel API 日志和环境变量。');
     } finally {
       setGenerating(false);
     }
@@ -941,16 +932,12 @@ export default function App() {
         updateChatMessage(loadingId, {
           content: '',
           generation: {
-            status: 'success',
-            title: '生成完成，保存失败',
-            image: data.generatedPreview,
-            shot: chatShot,
-            resolution: chatResolution,
-            note: data.errorMessage || '图片已生成，但 SaaS 保存失败，当前只显示临时预览。',
+            status: 'error',
+            error: data.errorMessage || '图片已生成，但 SaaS 保存失败，结果未交付。请稍后重试。',
           },
           actions: [{ type: 'generate', label: '重新生成并保存' }],
         });
-        setResultImage(data.generatedPreview);
+        setResultImage(null);
         setErrorMessage(data.errorMessage || '图片已生成，但未保存到 SaaS 图片库。');
       } else {
         throw new Error(data.errorMessage || data.error || `对话生图失败，状态码: ${response.status}`);

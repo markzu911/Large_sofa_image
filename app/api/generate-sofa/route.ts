@@ -1,15 +1,12 @@
 import {
   generateImageWithGemini,
   getBase64FromUrlOrData,
-  getRequestBody,
   saveGeneratedImageToSaas,
-  sendJson,
   verifyBeforeGenerate,
-} from './_shared';
+} from '../../../api/_shared';
 
-export const config = {
-  maxDuration: 300,
-};
+export const runtime = 'nodejs';
+export const maxDuration = 300;
 
 function buildPrompt({
   angle,
@@ -55,13 +52,9 @@ function buildPrompt({
 `;
 }
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return sendJson(res, 405, { success: false, errorMessage: 'Method not allowed' });
-  }
-
+export async function POST(req: Request) {
   try {
-    const body = await getRequestBody(req);
+    const body = await req.json();
     const {
       userId,
       toolId,
@@ -76,7 +69,7 @@ export default async function handler(req: any, res: any) {
     } = body;
 
     if (!productImage || !roomImage) {
-      return sendJson(res, 400, { success: false, errorMessage: '请上传或选择产品参考图与房间参考图' });
+      return Response.json({ success: false, errorMessage: '请上传或选择产品参考图与房间参考图' }, { status: 400 });
     }
 
     const isSaaS = userId && toolId && !String(userId).startsWith('mock_');
@@ -109,23 +102,16 @@ export default async function handler(req: any, res: any) {
           generatedBase64,
           mimeType,
         });
-        return sendJson(res, 200, {
-          success: true,
-          ...savedImage,
-          modelUsed,
-          info: infoText,
-        });
+        return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {
-        return sendJson(res, 502, {
+        return Response.json({
           success: false,
           errorMessage: `生图成功，但SaaS保存失败，结果未入库: ${saasErr.message || saasErr}`,
-          generatedPreview: `data:${mimeType};base64,${generatedBase64}`,
-          modelUsed,
-        });
+        }, { status: 502 });
       }
     }
 
-    return sendJson(res, 200, {
+    return Response.json({
       success: true,
       image: `data:${mimeType};base64,${generatedBase64}`,
       modelUsed,
@@ -133,10 +119,10 @@ export default async function handler(req: any, res: any) {
     });
   } catch (err: any) {
     const isKeyError = !process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY_NEXT && !process.env.API_KEY;
-    return sendJson(res, 500, {
+    return Response.json({
       success: false,
       isKeyError,
       errorMessage: err.message || '模型生成失败，请确认 API Key 和 Vercel 函数配置。',
-    });
+    }, { status: 500 });
   }
 }

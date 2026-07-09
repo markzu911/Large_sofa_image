@@ -1,19 +1,14 @@
-import { getRequestBody, launchTool, sendJson } from '../_shared';
+import { launchTool } from '../../../../api/_shared';
 
-export const config = {
-  maxDuration: 30,
-};
+export const runtime = 'nodejs';
+export const maxDuration = 30;
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return sendJson(res, 405, { success: false, errorMessage: 'Method not allowed' });
-  }
-
+export async function POST(req: Request) {
   try {
-    const { userId, toolId } = await getRequestBody(req);
+    const { userId, toolId } = await req.json();
 
     if (!userId || !toolId) {
-      return sendJson(res, 200, {
+      return Response.json({
         success: true,
         data: {
           user: {
@@ -34,9 +29,9 @@ export default async function handler(req: any, res: any) {
     }
 
     const data = await launchTool(userId, toolId);
-    return sendJson(res, 200, data);
+    return Response.json(data);
   } catch (err: any) {
-    return sendJson(res, 200, {
+    return Response.json({
       success: true,
       data: {
         user: {
