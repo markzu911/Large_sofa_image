@@ -1,7 +1,5 @@
 import {
-  SAAS_SAVE_TIMEOUT_MS,
   saveGeneratedImageToSaas,
-  withTimeout,
 } from '../../../api/_shared';
 
 export const runtime = 'nodejs';
@@ -28,7 +26,7 @@ function parseGeneratedImage(input: string, mimeTypeFromBody?: string) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const {userId, toolId, saasInfo, image, generatedBase64, mimeType} = body;
+    const {userId, toolId, saasInfo, image, generatedBase64, mimeType, skipConsume = false} = body;
     const imageInput = image || generatedBase64;
 
     if (!userId || !toolId) {
@@ -40,17 +38,14 @@ export async function POST(req: Request) {
     }
 
     const parsed = parseGeneratedImage(imageInput, mimeType);
-    const savedImage = await withTimeout(
-      saveGeneratedImageToSaas({
-        userId,
-        toolId,
-        generatedBase64: parsed.generatedBase64,
-        mimeType: parsed.mimeType,
-        saasInfo,
-      }),
-      SAAS_SAVE_TIMEOUT_MS,
-      `SaaS保存超时(${Math.round(SAAS_SAVE_TIMEOUT_MS / 1000)}s)，请稍后重试`
-    );
+    const savedImage = await saveGeneratedImageToSaas({
+      userId,
+      toolId,
+      generatedBase64: parsed.generatedBase64,
+      mimeType: parsed.mimeType,
+      saasInfo,
+      skipConsume: Boolean(skipConsume),
+    });
 
     return Response.json({
       success: true,
@@ -58,9 +53,14 @@ export async function POST(req: Request) {
       ...savedImage,
     });
   } catch (err: any) {
+    console.error('SaaS save-result route failed:', {
+      saveStep: err.saveStep,
+      message: err.message,
+    });
     return Response.json({
       success: false,
       savedToSaas: false,
+      saveStep: err.saveStep,
       errorMessage: err.message || 'SaaS保存失败',
     }, {status: 502});
   }

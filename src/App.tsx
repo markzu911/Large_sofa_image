@@ -22,6 +22,7 @@ import {
   Wand2,
   Settings,
   Images,
+  ZoomIn,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -40,6 +41,10 @@ type ChatGeneration = {
   image?: string | null;
   error?: string;
   note?: string;
+  needsSaasSave?: boolean;
+  saveError?: string;
+  saveStep?: string;
+  saveConsumed?: boolean;
   shot?: 'far' | 'medium' | 'close';
   resolution?: '1K' | '2K' | '4K' | '8K';
 };
@@ -77,38 +82,41 @@ type SaasInfo = {
 const SHOT_PRESETS = [
   {
     id: 'far',
-    name: '空间全景落位 (远景)',
-    height: '1.6米自然站立视角',
-    angle: '24-28mm 广角轻微俯视',
-    scale: 0.34,
+    name: '远景：空间全貌',
+    height: '1.45-1.6米站立机位',
+    angle: '24-28mm广角，房间入口/对角线机位',
+    scale: 0.3,
     anchorX: 0.5,
-    anchorY: 0.68,
-    description: '完整展示客厅空间，沙发只占合理比例，重点看它是否落在真实会客区。',
-    promptGuide: '远景空间摄影。先判断客厅真实地面和主会客区，把沙发放在最合理的地毯/茶几/电视墙关系中；沙发宽度约占画面32%-42%，完整入镜，不能遮挡门窗、通道或核心家具。镜头保留墙面、地面和周边家具，让买家清楚看到沙发与整个空间的比例关系。'
+    anchorY: 0.7,
+    description: '相机后退到房间入口或对角线位置，完整看空间结构和沙发落位。',
+    promptGuide: '远景必须像摄影师把相机退到同一个房间的入口、走廊口或客厅对角线位置拍摄，而不是把沙发简单缩小。使用24-28mm广角、1.45-1.6米站立机位，轻微俯视或平视。沙发应完整入镜，宽度约占画面28%-38%，前后左右保留大量空间，能看到墙面、地面、地毯/茶几/电视墙/窗帘等环境关系。允许选择更利于商品展示的正面、侧面或45度斜侧，但必须保持原房间墙体、窗户、门洞、电视/媒体墙和固定柜体的相对位置不变。景深较深，背景清晰，重点是证明沙发在真实房间中落位合理。'
   },
   {
     id: 'medium',
-    name: '电商主图半景 (中景)',
-    height: '1.15米坐姿视平',
-    angle: '35-45度斜侧三维透视',
-    scale: 0.5,
+    name: '中景：电商主图',
+    height: '1.05-1.2米坐姿/视平机位',
+    angle: '35-50mm标准焦段，35-45度斜侧',
+    scale: 0.48,
     anchorX: 0.5,
     anchorY: 0.66,
-    description: '主图最稳妥视角，沙发是主体，但仍保留足够地面和背景证明落位真实。',
-    promptGuide: '中景电商主图。把沙发放在房间最自然的座位区，背部方向顺应主墙或地板透视线；沙发宽度约占画面48%-60%，底部和地面接触必须完整可见，前方留出合理呼吸空间。突出轮廓、扶手、坐垫和材质，同时让墙面/地毯/茶几关系看起来像真实摆拍。'
+    description: '相机站在沙发前方约2-3米，主体清楚，仍保留地面和背景。',
+    promptGuide: '中景必须像摄影师在同一个房间内站到沙发前方约2-3米处拍摄，而不是裁切远景照片。使用35-50mm标准焦段、1.05-1.2米视平机位，可根据商品选择正面、侧面或35-45度斜侧构图。沙发宽度约占画面45%-58%，应基本完整入镜，底座和地面接触线必须完整可见，前方保留适当呼吸空间。背景允许轻微虚化但空间仍清楚，不能改变墙体、窗户、门洞、电视/媒体墙和固定柜体的原始关系，重点是电商主图质感、真实透视、沙发轮廓和材质。'
   },
   {
     id: 'close',
-    name: '材质近景细节 (近景)',
-    height: '0.85米低位近景',
-    angle: '50-70mm 低位斜侧近摄',
-    scale: 0.64,
+    name: '近景：材质细节',
+    height: '0.75-0.95米低位近摄机位',
+    angle: '70-90mm中长焦，低位斜侧近摄',
+    scale: 0.68,
     anchorX: 0.52,
     anchorY: 0.7,
-    description: '靠近看材质和结构，但保留地面接触边缘，避免像漂浮抠图。',
-    promptGuide: '近景细节摄影。镜头靠近沙发扶手、坐垫、靠背或前沿材质，但仍要保留一段地面接触边缘和真实阴影，证明沙发确实放在房间地面上。允许自然裁切部分沙发边缘以突出纹理和缝线，但不能把沙发变成孤立产品图；背景轻微虚化但空间透视仍可信。'
+    description: '相机靠近沙发约0.8-1.4米，突出面料、扶手、坐垫和缝线。',
+    promptGuide: '近景必须像摄影师在同一个房间内把相机推进到沙发前约0.8-1.4米处拍摄，而不是把整张图放大。使用70-90mm中长焦、0.75-0.95米低位近摄机位，浅景深。画面可以自然裁切沙发的一部分，可选择正面、侧面或45度斜侧特写，重点拍扶手、坐垫、靠背、前沿、布纹/皮纹/缝线/褶皱，但必须保留一段地面接触边缘和接触阴影，证明沙发在真实房间地面上。背景明显虚化但仍能看出原房间结构，不能把电视墙、窗户或门洞换边。'
   }
 ] as const;
+
+const ROOM_STRUCTURE_GUIDE = '房间构造约束：锁定原房间墙体、窗户/窗帘、门洞、电视/媒体墙、固定柜体、吊顶/梁、地面纹理方向和整体空间比例；原沙发、单椅、边几、茶几、抱枕、地毯等可移动家具可以被商品合理替换或轻微调整，但不能重建、翻转、旋转或重排房间骨架。';
+const PRODUCT_VIEW_GUIDE = '商品视角约束：可以在同一个真实房间内移动机位，选择沙发正面、侧面或45度斜侧等更适合展示的角度；如果角度与房间结构冲突，优先保持房间构造正确。';
 
 const CHAT_WELCOME_ACTIONS: ChatAction[] = [
   { type: 'uploadProduct', label: '上传沙发图', description: '锁定款式、材质和比例' },
@@ -237,11 +245,20 @@ function ChatGenerationLoadingCard({ generation }: { generation: ChatGeneration 
 function ChatGenerationResultCard({
   generation,
   onUse,
+  onDownload,
+  onPreview,
+  onRetrySave,
+  retrying = false,
 }: {
   generation: ChatGeneration;
   onUse: (image: string) => void;
+  onDownload: (image: string) => void;
+  onPreview: (image: string) => void;
+  onRetrySave?: (image: string) => void;
+  retrying?: boolean;
 }) {
   if (!generation.image) return null;
+  const canRetrySave = generation.needsSaasSave && generation.saveError && onRetrySave;
   return (
     <div className="mt-3 w-full max-w-[34rem] rounded-2xl border border-[#E8E3D9] bg-white p-4 shadow-[0_14px_34px_rgba(44,41,38,0.08)] space-y-3">
       <div className="flex items-start justify-between gap-3">
@@ -253,10 +270,28 @@ function ChatGenerationResultCard({
           {generation.resolution || '2K'}
         </span>
       </div>
-      <div className="rounded-xl overflow-hidden border border-[#E8E3D9] bg-[#F5F2EB]">
+      <button
+        type="button"
+        onClick={() => onPreview(generation.image!)}
+        title="预览大图"
+        className="group relative block w-full rounded-xl overflow-hidden border border-[#E8E3D9] bg-[#F5F2EB] cursor-zoom-in"
+      >
         <img src={generation.image} alt="Chat generated sofa result" className="w-full max-h-[420px] object-contain" />
-      </div>
+        <span className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100">
+          <ZoomIn className="h-4 w-4 text-[#B8975A]" />
+        </span>
+      </button>
       <div className="flex gap-2 justify-end">
+        {canRetrySave && (
+          <button
+            onClick={() => onRetrySave(generation.image!)}
+            disabled={retrying}
+            className="px-3 py-2 rounded-lg border border-[#E9DCC8] bg-[#FAF5EC] text-xs font-bold text-[#7C5A2B] hover:bg-[#F7EBDD] disabled:opacity-60 flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#B8975A] ${retrying ? 'animate-spin' : ''}`} />
+            {retrying ? '保存中' : '重新保存'}
+          </button>
+        )}
         <button
           onClick={() => onUse(generation.image!)}
           className="px-3 py-2 rounded-lg border border-[#E8E3D9] text-xs font-bold text-[#2C2926] hover:bg-[#FAF8F5] flex items-center gap-1.5"
@@ -264,14 +299,13 @@ function ChatGenerationResultCard({
           <Camera className="w-3.5 h-3.5 text-[#B8975A]" />
           放到预览区
         </button>
-        <a
-          href={generation.image}
-          download="chat-sofa-result.png"
+        <button
+          onClick={() => onDownload(generation.image!)}
           className="px-3 py-2 rounded-lg bg-[#2E2B28] text-xs font-bold text-white hover:bg-[#403B37] flex items-center gap-1.5"
         >
           <Download className="w-3.5 h-3.5 text-[#B8975A]" />
           下载
-        </a>
+        </button>
       </div>
     </div>
   );
@@ -312,6 +346,56 @@ const readApiResponse = async (response: Response, fallbackLabel: string) => {
 
 const shouldSaveToSaas = (userId: string | null, toolId: string | null) =>
   !!(userId && toolId && !String(userId).startsWith('mock_'));
+
+const SAAS_SAVE_STEP_LABELS: Record<string, string> = {
+  consume: '扣费',
+  'upload-token': '获取上传凭证',
+  'oss-upload': 'OSS上传',
+  'upload-commit': '图片入库',
+};
+
+const formatSaasSaveFailure = (err: any) => {
+  const message = err?.message || String(err || 'SaaS保存失败');
+  const label = err?.saveStep ? SAAS_SAVE_STEP_LABELS[err.saveStep] || err.saveStep : '';
+  if (label && !message.includes(label)) {
+    return `保存步骤「${label}」失败: ${message}`;
+  }
+  return message;
+};
+
+const didConsumeBeforeSaveFailure = (dataOrError: any) =>
+  Boolean(dataOrError?.saveConsumed || (dataOrError?.saveStep && dataOrError.saveStep !== 'consume'));
+
+const downloadImageFile = async (imageUrl: string, fileName: string) => {
+  const triggerDownload = (href: string, fallbackOpen = false) => {
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = fileName;
+    if (fallbackOpen) {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  if (imageUrl.startsWith('data:')) {
+    triggerDownload(imageUrl);
+    return;
+  }
+
+  try {
+    const response = await fetch(imageUrl, { mode: 'cors' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerDownload(objectUrl);
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    triggerDownload(imageUrl, true);
+  }
+};
 
 const compressImage = (dataUrl: string, maxDim = 1280, quality = 0.82, maxBytes = 900 * 1024): Promise<string> => {
   return new Promise((resolve) => {
@@ -484,6 +568,10 @@ export default function App() {
   const [generating, setGenerating] = useState<boolean>(false);
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingSaasImage, setPendingSaasImage] = useState<string | null>(null);
+  const [pendingSaasSkipConsume, setPendingSaasSkipConsume] = useState<boolean>(false);
+  const [saasSaveRetrying, setSaasSaveRetrying] = useState<boolean>(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('HOME');
 
   // Chat generation states
@@ -495,6 +583,7 @@ export default function App() {
   const chatProductInputRef = useRef<HTMLInputElement | null>(null);
   const chatRoomInputRef = useRef<HTMLInputElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const resultRunRef = useRef(0);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: getChatId(),
@@ -504,7 +593,18 @@ export default function App() {
     },
   ]);
 
-  const saveResultToSaas = async (image: string) => {
+  useEffect(() => {
+    if (!previewImage) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setPreviewImage(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewImage]);
+
+  const saveResultToSaas = async (image: string, skipConsume = false) => {
     if (!shouldSaveToSaas(userId, toolId)) return null;
 
     const response = await fetch('/api/save-result', {
@@ -519,11 +619,14 @@ export default function App() {
           toolId,
         },
         image,
+        skipConsume,
       }),
     });
     const data = await readApiResponse(response, '保存生成结果');
     if (!data.success) {
-      throw new Error(data.errorMessage || data.error || '保存生成结果失败');
+      const error = new Error(data.errorMessage || data.error || '保存生成结果失败') as Error & { saveStep?: string };
+      error.saveStep = data.saveStep;
+      throw error;
     }
     return data;
   };
@@ -732,6 +835,9 @@ export default function App() {
           setProductImage(compressed);
           setProductName(file.name);
           setResultImage(null); // Reset result on new upload
+          setPendingSaasImage(null);
+          setPendingSaasSkipConsume(false);
+          resultRunRef.current += 1;
         }
       };
       reader.readAsDataURL(file);
@@ -749,6 +855,9 @@ export default function App() {
           setRoomImage(compressed);
           setRoomName(file.name);
           setResultImage(null); // Reset result on new upload
+          setPendingSaasImage(null);
+          setPendingSaasSkipConsume(false);
+          resultRunRef.current += 1;
         }
       };
       reader.readAsDataURL(file);
@@ -762,9 +871,13 @@ export default function App() {
       return;
     }
 
+    const runId = resultRunRef.current + 1;
+    resultRunRef.current = runId;
     setGenerating(true);
     setErrorMessage(null);
     setResultImage(null);
+    setPendingSaasImage(null);
+    setPendingSaasSkipConsume(false);
 
     // Initialize timers and logs
     setElapsedTime(0);
@@ -838,9 +951,11 @@ export default function App() {
         lighting: '高端柔和自然漫射光',
         aspectRatio: '4:3',
         imageSize: resolution,
+        shotName: currentPreset.name,
+        cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
         placementX: sofaX,
         placementY: sofaY,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位，预览锚点只作为参考，不要机械照搬。`
+        customPrompt: `${currentPreset.promptGuide} ${ROOM_STRUCTURE_GUIDE} ${PRODUCT_VIEW_GUIDE} 高清还原等级: ${resolution}。请优先自动判断房间最合理的沙发落位；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，预览锚点只作为软参考，不要机械照搬。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -873,29 +988,43 @@ export default function App() {
       const data = await readApiResponse(response, '空间对齐生图');
       clearInterval(timer);
 
+      if (resultRunRef.current !== runId) return;
+
       if (data.success && data.image) {
         setProgressPercent(100);
         setActiveLogs(prev => [...prev, `[完成] 🎉 空间深度摄影合成成功！图片数据打包回传完毕。`]);
-        
-        // Wait a small moment to let user appreciate the 100% complete state
-        await new Promise(r => setTimeout(r, 450));
         setResultImage(data.image);
+        setGenerating(false);
         if (data.needsSaasSave || data.savedToSaas === false) {
-          setErrorMessage('图片已生成，正在保存到 SaaS 图片库...');
-          setActiveLogs(prev => [...prev, `[SaaS] 💾 图片已生成，正在执行独立保存入库...`]);
-          try {
-            const savedData = await saveResultToSaas(data.image);
+          const skipConsume = didConsumeBeforeSaveFailure(data);
+          setPendingSaasImage(data.image);
+          setPendingSaasSkipConsume(skipConsume);
+          setErrorMessage('图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...');
+          setActiveLogs(prev => [...prev, `[SaaS] 💾 图片已显示，正在后台保存入库...`]);
+          void saveResultToSaas(data.image, skipConsume).then((savedData) => {
+            if (resultRunRef.current !== runId) return;
             if (savedData?.image) {
               setResultImage(savedData.image);
             }
+            setPendingSaasImage(null);
+            setPendingSaasSkipConsume(false);
             setErrorMessage(null);
             setActiveLogs(prev => [...prev, `[完成] ✅ SaaS 图片库保存成功。`]);
-          } catch (saveErr: any) {
-            setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${saveErr.message || saveErr}`);
-            setActiveLogs(prev => [...prev, `[警告] SaaS 保存失败，当前显示临时预览图。`]);
-          }
+          }).catch((saveErr: any) => {
+            if (resultRunRef.current !== runId) return;
+            const message = formatSaasSaveFailure(saveErr);
+            setPendingSaasImage(data.image);
+            setPendingSaasSkipConsume(skipConsume || didConsumeBeforeSaveFailure(saveErr));
+            setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${message}`);
+            setActiveLogs(prev => [...prev, `[警告] SaaS 保存失败，当前显示临时预览图：${message}`]);
+          });
         } else if (data.warning) {
+          setPendingSaasImage(null);
+          setPendingSaasSkipConsume(false);
           setErrorMessage(data.warning);
+        } else {
+          setPendingSaasImage(null);
+          setPendingSaasSkipConsume(false);
         }
       } else if (data.generatedPreview) {
         setProgressPercent(100);
@@ -915,13 +1044,16 @@ export default function App() {
       }
     } catch (err: any) {
       clearInterval(timer);
+      if (resultRunRef.current !== runId) return;
       console.error(err);
       setProgressPercent(100);
       setActiveLogs(prev => [...prev, `[错误] 请求失败，未生成可交付图片。`]);
       setResultImage(null);
       setErrorMessage(err.message || '请求失败，请检查 Vercel API 日志和环境变量。');
     } finally {
-      setGenerating(false);
+      if (resultRunRef.current === runId) {
+        setGenerating(false);
+      }
     }
   };
 
@@ -933,6 +1065,84 @@ export default function App() {
 
   const updateChatMessage = (id: string, patch: Partial<ChatMessage>) => {
     setChatMessages((prev) => prev.map((message) => (message.id === id ? { ...message, ...patch } : message)));
+  };
+
+  const updateChatGeneration = (id: string, patch: Partial<ChatGeneration>) => {
+    setChatMessages((prev) =>
+      prev.map((message) =>
+        message.id === id && message.generation
+          ? { ...message, generation: { ...message.generation, ...patch } }
+          : message
+      )
+    );
+  };
+
+  const retrySaveCurrentResult = async (image?: string, chatMessageId?: string, skipConsumeOverride?: boolean) => {
+    const imageToSave = image || pendingSaasImage || resultImage;
+    if (!imageToSave) return;
+    const skipConsume = skipConsumeOverride ?? pendingSaasSkipConsume;
+    const runId = resultRunRef.current;
+
+    if (!shouldSaveToSaas(userId, toolId)) {
+      setErrorMessage('当前缺少 SaaS 用户身份，无法保存到图片库。请从 SaaS 平台内启动工具。');
+      return;
+    }
+
+    setSaasSaveRetrying(true);
+    setPendingSaasImage(imageToSave);
+    setPendingSaasSkipConsume(skipConsume);
+    setErrorMessage('正在重新保存到 SaaS 图片库...');
+    if (chatMessageId) {
+      updateChatGeneration(chatMessageId, {
+        note: '正在重新保存到 SaaS 图片库...',
+        needsSaasSave: true,
+        saveConsumed: skipConsume,
+        saveError: undefined,
+      });
+    }
+
+    try {
+      const savedData = await saveResultToSaas(imageToSave, skipConsume);
+      const savedImage = savedData?.image || imageToSave;
+      if (resultRunRef.current === runId) {
+        setResultImage(savedImage);
+        setPendingSaasImage(null);
+        setPendingSaasSkipConsume(false);
+        setErrorMessage(null);
+        setActiveLogs(prev => [...prev, `[完成] ✅ SaaS 图片库重新保存成功。`]);
+      }
+      if (chatMessageId) {
+        updateChatGeneration(chatMessageId, {
+          image: savedImage,
+          note: '已保存到 SaaS 图片库。',
+          needsSaasSave: false,
+          saveConsumed: false,
+          saveError: undefined,
+          saveStep: undefined,
+        });
+      }
+    } catch (saveErr: any) {
+      const message = formatSaasSaveFailure(saveErr);
+      if (resultRunRef.current === runId) {
+        setPendingSaasImage(imageToSave);
+        setPendingSaasSkipConsume(skipConsume || didConsumeBeforeSaveFailure(saveErr));
+        setErrorMessage(`SaaS保存失败，当前为临时预览图: ${message}`);
+        setActiveLogs(prev => [...prev, `[警告] SaaS 保存重试失败：${message}`]);
+      }
+      if (chatMessageId) {
+        updateChatGeneration(chatMessageId, {
+          note: `SaaS保存失败，当前为临时预览图: ${message}`,
+          needsSaasSave: true,
+          saveConsumed: skipConsume || didConsumeBeforeSaveFailure(saveErr),
+          saveError: message,
+          saveStep: saveErr.saveStep,
+        });
+      }
+    } finally {
+      if (resultRunRef.current === runId) {
+        setSaasSaveRetrying(false);
+      }
+    }
   };
 
   const getNextStepActions = (): ChatAction[] => [
@@ -958,6 +1168,9 @@ export default function App() {
     setChatShot('medium');
     setChatResolution('2K');
     setChatGenerating(false);
+    setPendingSaasImage(null);
+    setPendingSaasSkipConsume(false);
+    resultRunRef.current += 1;
   };
 
   const handleChatProductUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -970,6 +1183,9 @@ export default function App() {
       setProductImage(compressed);
       setProductName(file.name);
       setResultImage(null);
+      setPendingSaasImage(null);
+      setPendingSaasSkipConsume(false);
+      resultRunRef.current += 1;
       addChatMessage({
         role: 'user',
         content: productImage ? '已替换沙发商品参考图' : '已上传沙发商品参考图',
@@ -996,6 +1212,9 @@ export default function App() {
       setRoomImage(compressed);
       setRoomName(file.name);
       setResultImage(null);
+      setPendingSaasImage(null);
+      setPendingSaasSkipConsume(false);
+      resultRunRef.current += 1;
       addChatMessage({
         role: 'user',
         content: roomImage ? '已替换房间场景参考图' : '已上传房间场景参考图',
@@ -1024,7 +1243,11 @@ export default function App() {
     }
 
     setErrorMessage(null);
+    setPendingSaasImage(null);
+    setPendingSaasSkipConsume(false);
     setChatGenerating(true);
+    const runId = resultRunRef.current + 1;
+    resultRunRef.current = runId;
     const loadingId = addChatMessage({
       role: 'assistant',
       content: '',
@@ -1050,7 +1273,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区，不能随机居中、遮挡动线或悬浮。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。\n${ROOM_STRUCTURE_GUIDE}\n${PRODUCT_VIEW_GUIDE}\n景别要求：远景/中景/近景必须通过相机距离、焦段、机位高度、景深和裁切范围变化实现，不要只改变沙发大小。\n落位要求：先识别房间真实地面、主墙、地毯/茶几/门窗/通道关系，自动把沙发放在最合理的客厅座位区；如果原房间已有沙发或座椅，可以用产品沙发替换原有可移动家具，不能随机居中、遮挡动线或悬浮。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
@@ -1062,8 +1285,8 @@ export default function App() {
       const data = await readApiResponse(response, '对话生图');
       if (data.success && data.image) {
         const initialNote = data.needsSaasSave || data.savedToSaas === false
-          ? '图片已生成，正在保存到 SaaS 图片库...'
-          : data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。';
+          ? '图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...'
+          : data.savedToSaas ? '已保存到 SaaS 图片库。' : data.modelUsed ? `模型: ${data.modelUsed}` : '图片已生成在对话中。';
         updateChatMessage(loadingId, {
           content: '',
           generation: {
@@ -1073,6 +1296,9 @@ export default function App() {
             shot: chatShot,
             resolution: chatResolution,
             note: initialNote,
+            needsSaasSave: data.needsSaasSave || data.savedToSaas === false,
+            saveStep: data.saveStep,
+            saveConsumed: didConsumeBeforeSaveFailure(data),
           },
           actions: [
             { type: 'generate', label: '再生成一版', description: '保留当前设置重新出图' },
@@ -1080,11 +1306,18 @@ export default function App() {
             { type: 'shot', label: '改成远景', value: 'far', description: '展示完整空间氛围' },
           ],
         });
-        setResultImage(data.image);
+        if (resultRunRef.current === runId) {
+          setResultImage(data.image);
+        }
         if (data.needsSaasSave || data.savedToSaas === false) {
-          setErrorMessage('图片已生成，正在保存到 SaaS 图片库...');
-          try {
-            const savedData = await saveResultToSaas(data.image);
+          const skipConsume = didConsumeBeforeSaveFailure(data);
+          if (resultRunRef.current === runId) {
+            setPendingSaasImage(data.image);
+            setPendingSaasSkipConsume(skipConsume);
+            setErrorMessage('图片已生成，可预览和下载；正在后台保存到 SaaS 图片库...');
+            setChatGenerating(false);
+          }
+          void saveResultToSaas(data.image, skipConsume).then((savedData) => {
             const savedImage = savedData?.image || data.image;
             updateChatMessage(loadingId, {
               generation: {
@@ -1094,11 +1327,24 @@ export default function App() {
                 shot: chatShot,
                 resolution: chatResolution,
                 note: '已保存到 SaaS 图片库。',
+                needsSaasSave: false,
+                saveConsumed: false,
+                saveError: undefined,
+                saveStep: undefined,
               },
             });
-            setResultImage(savedImage);
-            setErrorMessage(null);
-          } catch (saveErr: any) {
+            if (resultRunRef.current === runId) {
+              setResultImage(savedImage);
+              setPendingSaasImage(null);
+              setPendingSaasSkipConsume(false);
+              setErrorMessage(null);
+            }
+          }).catch((saveErr: any) => {
+            const message = formatSaasSaveFailure(saveErr);
+            if (resultRunRef.current === runId) {
+              setPendingSaasImage(data.image);
+              setPendingSaasSkipConsume(skipConsume || didConsumeBeforeSaveFailure(saveErr));
+            }
             updateChatMessage(loadingId, {
               generation: {
                 status: 'success',
@@ -1106,10 +1352,22 @@ export default function App() {
                 image: data.image,
                 shot: chatShot,
                 resolution: chatResolution,
-                note: `SaaS保存失败，当前为临时预览图: ${saveErr.message || saveErr}`,
+                note: `SaaS保存失败，当前为临时预览图: ${message}`,
+                needsSaasSave: true,
+                saveConsumed: skipConsume || didConsumeBeforeSaveFailure(saveErr),
+                saveError: message,
+                saveStep: saveErr.saveStep,
               },
             });
-            setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${saveErr.message || saveErr}`);
+            if (resultRunRef.current === runId) {
+              setErrorMessage(`生图成功，但SaaS保存失败，已先返回临时预览图: ${message}`);
+            }
+          });
+        } else {
+          if (resultRunRef.current === runId) {
+            setPendingSaasImage(null);
+            setPendingSaasSkipConsume(false);
+            setChatGenerating(false);
           }
         }
       } else if (data.generatedPreview) {
@@ -1121,8 +1379,10 @@ export default function App() {
           },
           actions: [{ type: 'generate', label: '重新生成并保存' }],
         });
-        setResultImage(null);
-        setErrorMessage(data.errorMessage || '图片已生成，但未保存到 SaaS 图片库。');
+        if (resultRunRef.current === runId) {
+          setResultImage(null);
+          setErrorMessage(data.errorMessage || '图片已生成，但未保存到 SaaS 图片库。');
+        }
       } else {
         throw new Error(data.errorMessage || data.error || `对话生图失败，状态码: ${response.status}`);
       }
@@ -1139,9 +1399,13 @@ export default function App() {
           { type: 'uploadRoom', label: '更换房间图' },
         ],
       });
-      setErrorMessage(err.message || '对话生图失败，请稍后重试。');
+      if (resultRunRef.current === runId) {
+        setErrorMessage(err.message || '对话生图失败，请稍后重试。');
+      }
     } finally {
-      setChatGenerating(false);
+      if (resultRunRef.current === runId) {
+        setChatGenerating(false);
+      }
     }
   };
 
@@ -1220,14 +1484,9 @@ export default function App() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!resultImage) return;
-    const link = document.createElement('a');
-    link.href = resultImage;
-    link.download = `沙发生图_${resolution}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await downloadImageFile(resultImage, `沙发生图_${resolution}.png`);
   };
 
   return (
@@ -1263,7 +1522,10 @@ export default function App() {
               <span className="text-[#2C2926]">常规空间合成</span>
               <button
                 onClick={() => {
+                  resultRunRef.current += 1;
                   setResultImage(null);
+                  setPendingSaasImage(null);
+                  setPendingSaasSkipConsume(false);
                   setErrorMessage(null);
                 }}
                 className="ml-2 px-3 py-2 rounded-xl border border-[#E8E3D9] hover:bg-[#FAF8F5] transition-colors flex items-center gap-1.5"
@@ -1573,7 +1835,12 @@ export default function App() {
 
             {resultImage && (
               <button
-                onClick={() => setResultImage(null)}
+                onClick={() => {
+                  resultRunRef.current += 1;
+                  setResultImage(null);
+                  setPendingSaasImage(null);
+                  setPendingSaasSkipConsume(false);
+                }}
                 className="text-xs bg-white text-stone-700 px-3 py-1 rounded-md border border-stone-200 hover:bg-[#FAF8F5] flex items-center gap-1.5 font-medium transition-all cursor-pointer"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> 重新调整
@@ -1591,8 +1858,18 @@ export default function App() {
                 className="mb-3 bg-[#FAF5EC] border border-[#E9DCC8] p-3 rounded-lg text-xs text-[#7C5A2B] flex items-start gap-2 shadow-sm"
               >
                 <AlertCircle className="w-4 h-4 text-[#B8975A] shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <span className="font-bold">系统提示:</span> {errorMessage}
+                  {pendingSaasImage && resultImage && errorMessage.includes('失败') && (
+                    <button
+                      onClick={() => retrySaveCurrentResult()}
+                      disabled={saasSaveRetrying}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#E0CDAF] bg-white px-3 py-1.5 text-[11px] font-bold text-[#7C5A2B] hover:bg-[#FFF9F0] disabled:opacity-60"
+                    >
+                      <RefreshCw className={`w-3 h-3 text-[#B8975A] ${saasSaveRetrying ? 'animate-spin' : ''}`} />
+                      {saasSaveRetrying ? '保存中' : '重新保存到图片库'}
+                    </button>
+                  )}
                 </div>
               </motion.div>
             )}
@@ -1683,9 +1960,18 @@ export default function App() {
                         <ChatGenerationResultCard
                           generation={message.generation}
                           onUse={(image) => {
+                            resultRunRef.current += 1;
                             setResultImage(image);
+                            setPendingSaasImage(message.generation?.needsSaasSave ? image : null);
+                            setPendingSaasSkipConsume(Boolean(message.generation?.saveConsumed));
                             setWorkspaceMode('STANDARD');
                           }}
+                          onDownload={(image) => {
+                            void downloadImageFile(image, `对话沙发生图_${message.id}.png`);
+                          }}
+                          onPreview={(image) => setPreviewImage(image)}
+                          onRetrySave={(image) => retrySaveCurrentResult(image, message.id, Boolean(message.generation?.saveConsumed))}
+                          retrying={saasSaveRetrying && pendingSaasImage === message.generation.image}
                         />
                       )}
                       {message.generation?.status === 'error' && (
@@ -1703,7 +1989,10 @@ export default function App() {
                           <div className="mt-2 flex justify-end">
                             <button
                               onClick={() => {
+                                resultRunRef.current += 1;
                                 setResultImage(message.image || null);
+                                setPendingSaasImage(null);
+                                setPendingSaasSkipConsume(false);
                                 setWorkspaceMode('STANDARD');
                               }}
                               className="text-[10px] font-bold text-[#B8975A] hover:text-[#2E2B28] flex items-center gap-1"
@@ -1908,11 +2197,23 @@ export default function App() {
                   className="w-full h-full flex items-center justify-center relative"
                 >
                   <div className="relative max-w-full max-h-full rounded-xl overflow-hidden shadow-2xl border-4 border-white bg-white flex items-center justify-center">
-                    <img
-                      src={resultImage}
-                      alt="Synthesized Sofa Scene"
-                      className="max-w-full max-h-[62vh] object-contain"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setPreviewImage(resultImage)}
+                      title="预览大图"
+                      className="group relative flex max-w-full max-h-full cursor-zoom-in items-center justify-center"
+                    >
+                      <img
+                        src={resultImage}
+                        alt="Synthesized Sofa Scene"
+                        className="max-w-full max-h-[62vh] object-contain"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all group-hover:bg-black/10 group-hover:opacity-100">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/75 text-white shadow-lg">
+                          <ZoomIn className="h-5 w-5 text-[#B8975A]" />
+                        </span>
+                      </span>
+                    </button>
 
                     <div className="absolute top-4 left-4 bg-black/75 backdrop-blur text-white px-3 py-1 text-[11px] rounded-full flex items-center gap-1.5 font-medium border border-white/10">
                       <Sparkles className="w-3 h-3 text-[#B8975A]" />
@@ -1980,6 +2281,60 @@ export default function App() {
 
       </div>
       )}
+      <AnimatePresence>
+        {previewImage && (
+          <motion.div
+            key="image-preview"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setPreviewImage(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              transition={{ duration: 0.18 }}
+              className="relative flex max-h-[94vh] w-full max-w-6xl flex-col gap-3"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white backdrop-blur">
+                  图片预览
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void downloadImageFile(previewImage, `沙发生图预览_${resolution}.png`)}
+                    className="flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#2E2B28] shadow-lg hover:bg-[#FAF8F5]"
+                  >
+                    <Download className="h-3.5 w-3.5 text-[#B8975A]" />
+                    下载
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewImage(null)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 text-white backdrop-blur hover:bg-white/20"
+                    title="关闭预览"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-white/10 bg-black/30 p-2 shadow-2xl">
+                <img
+                  src={previewImage}
+                  alt="Preview large generated sofa scene"
+                  className="max-h-[82vh] max-w-full rounded-lg object-contain"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

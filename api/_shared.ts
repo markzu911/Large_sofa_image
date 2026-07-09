@@ -4,11 +4,12 @@ export const MAX_INPUT_IMAGE_BYTES = 2 * 1024 * 1024;
 export const AI_GENERATION_TIMEOUT_MS = Number(process.env.AI_GENERATION_TIMEOUT_MS || 32000);
 export const SAAS_SHORT_TIMEOUT_MS = Number(process.env.SAAS_SHORT_TIMEOUT_MS || 8000);
 export const SAAS_UPLOAD_TIMEOUT_MS = Number(process.env.SAAS_UPLOAD_TIMEOUT_MS || 45000);
-export const SAAS_SAVE_TIMEOUT_MS = Number(process.env.SAAS_SAVE_TIMEOUT_MS || 50000);
 export const SAAS_ORIGIN = normalizeSaasUrl(process.env.SAAS_ORIGIN || 'http://aibigtree.com');
 
 const TRANSIENT_ERROR_PATTERN = /503|504|429|UNAVAILABLE|RESOURCE_EXHAUSTED|timeout|Timeout|high demand/i;
 let aiClient: GoogleGenAI | null = null;
+
+type SaasSaveStep = 'consume' | 'upload-token' | 'oss-upload' | 'upload-commit';
 
 export type SaasInfo = {
   userId?: string | null;
@@ -146,7 +147,7 @@ export async function readJsonResponse(res: Response, fallbackLabel: string) {
     throw new Error(`${fallbackLabel}接口解析失败: ${text.slice(0, 300)}`);
   }
   if (!res.ok || data.success === false) {
-    throw new Error(data.message || data.error || `${fallbackLabel}失败, 状态码: ${res.status}`);
+    throw new Error(data.errorMessage || data.message || data.error || `${fallbackLabel}失败, 状态码: ${res.status}`);
   }
   return data;
 }
@@ -292,10 +293,20 @@ async function commitUpload(userId: string, toolId: string, objectKey: string, f
     }),
   }, SAAS_SHORT_TIMEOUT_MS, '提交入库');
   const data = await readJsonResponse(res, '提交入库');
-  if (data.success === false || !data.savedToRecords) {
-    throw new Error(data.message || data.error || '确认入库失败');
+  if (data.success === false || data.savedToRecords === false) {
+    throw new Error(data.errorMessage || data.message || data.error || '确认入库失败');
   }
   return data;
+}
+
+async function runSaasSaveStep<T>(step: SaasSaveStep, label: string, task: () => Promise<T>): Promise<T> {
+  try {
+    return await task();
+  } catch (err: any) {
+    const error = new Error(`${label}失败: ${err.message || err}`) as Error & { saveStep?: SaasSaveStep };
+    error.saveStep = step;
+    throw error;
+  }
 }
 
 export async function generateImageWithGemini({
@@ -368,20 +379,30 @@ export async function saveGeneratedImageToSaas({
   generatedBase64,
   mimeType,
   saasInfo,
+  skipConsume = false,
 }: {
   userId: string;
   toolId: string;
   generatedBase64: string;
   mimeType: string;
   saasInfo?: SaasInfo;
+  skipConsume?: boolean;
 }) {
-  await consumePoints(userId, toolId, saasInfo);
+  if (!skipConsume) {
+    await runSaasSaveStep('consume', '扣费', () => consumePoints(userId, toolId, saasInfo));
+  }
 
   const imageBuffer = Buffer.from(generatedBase64, 'base64');
   const fileSize = imageBuffer.length;
-  const tokenData = await getDirectToken(userId, toolId, fileSize, mimeType, saasInfo);
-  await uploadToOss(tokenData.uploadUrl, tokenData.method, tokenData.headers, imageBuffer, mimeType);
-  const commitData = await commitUpload(userId, toolId, tokenData.objectKey, fileSize, saasInfo);
+  const tokenData = await runSaasSaveStep('upload-token', '获取上传凭证', () =>
+    getDirectToken(userId, toolId, fileSize, mimeType, saasInfo)
+  );
+  await runSaasSaveStep('oss-upload', 'OSS上传', () =>
+    uploadToOss(tokenData.uploadUrl, tokenData.method, tokenData.headers, imageBuffer, mimeType)
+  );
+  const commitData = await runSaasSaveStep('upload-commit', '图片入库', () =>
+    commitUpload(userId, toolId, tokenData.objectKey, fileSize, saasInfo)
+  );
 
   return {
     image: commitData.image?.url || commitData.url || `data:${mimeType};base64,${generatedBase64}`,
