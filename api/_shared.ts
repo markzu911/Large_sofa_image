@@ -373,6 +373,80 @@ export async function generateImageWithGemini({
   throw lastError || new Error('模型生成失败');
 }
 
+export async function generatePlacementPlanWithGemini({
+  roomData,
+  roomMimeType,
+  productData,
+  productMimeType,
+  shotName,
+  cameraSpec,
+}: {
+  roomData: string;
+  roomMimeType: string;
+  productData?: string;
+  productMimeType?: string;
+  shotName?: string;
+  cameraSpec?: string;
+}) {
+  const client = getGeminiClient();
+  const parts: any[] = [
+    {
+      text: `
+你是一位严格的室内设计空间规划师。请先分析【房间参考图】的真实结构，再给出沙发在这个房间中的合理落位方案。
+
+只输出中文结构化方案，不生成图片，不要写寒暄。必须包含：
+1. 不可移动结构：电视/媒体墙、窗户/窗帘、门洞/阳台门、固定柜体、墙角、地面透视、主要通道。
+2. 禁放区：窗前采光区、门洞/通道、电视墙正前方、固定柜体前、墙体开口、过窄地面。
+3. 可放区：原沙发/座椅区、地毯/茶几会客区、电视/媒体墙对侧或斜对侧开阔地面、不会挡光挡路的区域。
+4. 推荐沙发落位：用画面方位描述，例如“画面下方偏右/画面左下开放地面/电视墙对侧”，并说明主坐面朝向。
+5. 推荐拍摄机位：根据 ${shotName || '当前景别'} 和 ${cameraSpec || '当前镜头'} 给出可选机位，可以正面/侧面/背侧/斜侧，但必须服从合理落位。
+6. 绝对禁止：明确写出本图中最容易出错的摆法。
+
+硬性规则：
+- 沙发位置不能由画面中心、商品角度或构图美观倒推，必须从可放区中选择。
+- 有电视/媒体墙时，沙发主坐面应朝向电视/媒体墙，不能面向窗户而背离电视/媒体墙。
+- 大窗/窗帘前、门洞、通道、电视墙正前方、固定柜体前通常是禁放区。
+- 远景/中景/近景只改变相机距离、焦段、景深和裁切，不改变沙发落位。
+- 当电视/媒体墙、窗户、门洞、通道和商品展示角度发生冲突时，优先保留房间结构、采光和动线，再选择最合理的可放区与机位。
+`,
+    },
+    { text: '【房间参考图】请以这张图作为唯一空间结构来源。' },
+    { inlineData: { data: roomData, mimeType: roomMimeType } },
+  ];
+
+  if (productData && productMimeType) {
+    parts.push(
+      { text: '【沙发产品参考图】只用于判断沙发体量、朝向展示需求和大致形态，不要采用其中的房间背景。' },
+      { inlineData: { data: productData, mimeType: productMimeType } },
+    );
+  }
+
+  const response = await retryWithBackoff(() => withTimeout(
+    client.models.generateContent({
+      model: process.env.GEMINI_PLACEMENT_MODEL || 'gemini-2.5-flash',
+      contents: { parts },
+      config: {
+        responseMimeType: 'text/plain',
+      },
+    }),
+    Number(process.env.PLACEMENT_ANALYSIS_TIMEOUT_MS || 18000),
+    '空间落位分析超时，请稍后重试'
+  ), 1);
+
+  const directText = typeof response.text === 'string' ? response.text.trim() : '';
+  if (directText) return directText;
+
+  const partText = (response.candidates?.[0]?.content?.parts || [])
+    .map((part: any) => part.text || '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!partText) {
+    throw new Error('空间落位分析未返回文本方案');
+  }
+  return partText;
+}
+
 export async function saveGeneratedImageToSaas({
   userId,
   toolId,
