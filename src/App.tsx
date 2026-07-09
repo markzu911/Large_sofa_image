@@ -276,6 +276,34 @@ const getDataUrlByteSize = (dataUrl: string) => {
   return Math.ceil((base64.length * 3) / 4);
 };
 
+const readApiResponse = async (response: Response, fallbackLabel: string) => {
+  const text = await response.text();
+  let data: any = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    const message = response.status === 504
+      ? `${fallbackLabel}超过平台网关等待时间，请先用 1K 清晰度重试，或稍后再试。`
+      : `${fallbackLabel}返回了非 JSON 响应，状态码: ${response.status}`;
+    return {
+      success: false,
+      errorMessage: message,
+      raw: text.slice(0, 300),
+    };
+  }
+
+  if (!response.ok && data.success !== false) {
+    return {
+      ...data,
+      success: false,
+      errorMessage: data.errorMessage || data.error || data.message || `${fallbackLabel}失败，状态码: ${response.status}`,
+    };
+  }
+
+  return data;
+};
+
 const compressImage = (dataUrl: string, maxDim = 1280, quality = 0.82, maxBytes = 900 * 1024): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -419,7 +447,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, toolId, saasInfo: { ...saasInfo, userId, toolId } })
         });
-        const data = await res.json();
+        const data = await readApiResponse(res, '启动工具');
         if (data.success && data.data) {
           setUserInfo(data.data.user);
           setToolInfo(data.data.tool);
@@ -441,7 +469,7 @@ export default function App() {
 
   // Simplified parameters: Distance (Far, Medium, Close) & Resolution (1K, 2K, 4K, 8K)
   const [distance, setDistance] = useState<'far' | 'medium' | 'close'>('medium');
-  const [resolution, setResolution] = useState<'1K' | '2K' | '4K' | '8K'>('2K');
+  const [resolution, setResolution] = useState<'1K' | '2K' | '4K' | '8K'>('1K');
 
   // UI Flow States
   const [generating, setGenerating] = useState<boolean>(false);
@@ -454,7 +482,7 @@ export default function App() {
   const [chatGenerating, setChatGenerating] = useState<boolean>(false);
   const [chatBrief, setChatBrief] = useState<string>('');
   const [chatShot, setChatShot] = useState<'far' | 'medium' | 'close'>('medium');
-  const [chatResolution, setChatResolution] = useState<'1K' | '2K' | '4K' | '8K'>('2K');
+  const [chatResolution, setChatResolution] = useState<'1K' | '2K' | '4K' | '8K'>('1K');
   const chatProductInputRef = useRef<HTMLInputElement | null>(null);
   const chatRoomInputRef = useRef<HTMLInputElement | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
@@ -800,7 +828,7 @@ export default function App() {
         });
       }
 
-      const data = await response.json();
+      const data = await readApiResponse(response, '空间对齐生图');
       clearInterval(timer);
 
       if (data.success && data.image) {
@@ -975,7 +1003,7 @@ export default function App() {
         }),
       });
 
-      const data = await response.json();
+      const data = await readApiResponse(response, '对话生图');
       if (data.success && data.image) {
         updateChatMessage(loadingId, {
           content: '',

@@ -1,12 +1,14 @@
 import {
+  SAAS_SAVE_TIMEOUT_MS,
   generateImageWithGemini,
   getBase64FromUrlOrData,
   saveGeneratedImageToSaas,
   verifyBeforeGenerate,
+  withTimeout,
 } from '../../../api/_shared';
 
 export const runtime = 'nodejs';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 function buildPrompt({
   angle,
@@ -124,13 +126,17 @@ export async function POST(req: Request) {
 
     if (isSaaS) {
       try {
-        const savedImage = await saveGeneratedImageToSaas({
-          userId,
-          toolId,
-          generatedBase64,
-          mimeType,
-          saasInfo,
-        });
+        const savedImage = await withTimeout(
+          saveGeneratedImageToSaas({
+            userId,
+            toolId,
+            generatedBase64,
+            mimeType,
+            saasInfo,
+          }),
+          SAAS_SAVE_TIMEOUT_MS,
+          `SaaS保存超时(${Math.round(SAAS_SAVE_TIMEOUT_MS / 1000)}s)，请稍后重试`
+        );
         return Response.json({ success: true, ...savedImage, modelUsed, info: infoText });
       } catch (saasErr: any) {
         return Response.json({
