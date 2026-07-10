@@ -84,35 +84,26 @@ const SHOT_PRESETS = [
   {
     id: 'far',
     name: '远景：空间全貌',
-    height: '1.45-1.6米站立机位',
-    angle: '24-28mm广角，入口/对角线/侧方自适应机位',
-    scale: 0.3,
-    anchorX: 0.5,
-    anchorY: 0.7,
+    height: '自适应站立机位',
+    angle: '广角空间镜头，入口/对角线/侧方自适应',
     description: '相机后退到房间入口或对角线位置，完整看空间结构和沙发落位。',
-    promptGuide: '远景：相机后退到同一房间的入口、对角线或侧方开阔位置，广角展示完整空间；沙发占比小但落位必须合理。'
+    promptGuide: '远景：相机后退到同一房间的入口、对角线或侧方开阔位置，广角展示完整空间；拍摄角度自适应，沙发占比小但落位必须合理。'
   },
   {
     id: 'medium',
     name: '中景：电商主图',
-    height: '1.05-1.2米坐姿/视平机位',
-    angle: '35-50mm标准焦段，正面/侧面/斜侧自适应',
-    scale: 0.48,
-    anchorX: 0.5,
-    anchorY: 0.66,
+    height: '自适应视平机位',
+    angle: '标准主图镜头，正面/侧面/斜侧自适应',
     description: '相机站在沙发前方约2-3米，主体清楚，仍保留地面和背景。',
-    promptGuide: '中景：相机在合理落位后的沙发前方约2-3米，标准焦段拍摄；沙发是主体，同时保留地面接触和真实背景。'
+    promptGuide: '中景：相机靠近到主图距离，拍摄角度自适应；沙发是主体，同时保留地面接触和真实背景。'
   },
   {
     id: 'close',
     name: '近景：材质细节',
-    height: '0.75-0.95米低位近摄机位',
-    angle: '70-90mm中长焦，正面/侧面/斜侧局部近摄',
-    scale: 0.68,
-    anchorX: 0.52,
-    anchorY: 0.7,
+    height: '自适应近摄机位',
+    angle: '中长焦细节镜头，正面/侧面/斜侧自适应',
     description: '相机靠近沙发约0.8-1.4米，突出面料、扶手、坐垫和缝线。',
-    promptGuide: '近景：相机靠近已经合理落位的沙发，用中长焦突出材质、扶手、坐垫、缝线和接触阴影；可以自然裁切。'
+    promptGuide: '近景：相机靠近已经合理落位的沙发，拍摄角度自适应；突出材质、扶手、坐垫、缝线和接触阴影，可以自然裁切局部。'
   }
 ] as const;
 
@@ -653,26 +644,11 @@ export default function App() {
     chatScrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [chatMessages, chatGenerating]);
 
-  // Drag states for sofa position previewing
+  // Canvas preview is visual only; placement is decided by backend room analysis.
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [sofaX, setSofaX] = useState<number>(0.5);
-  const [sofaY, setSofaY] = useState<number>(0.65);
-  const [hasManualPlacement, setHasManualPlacement] = useState<boolean>(false);
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const applyShotPreset = (shot: 'far' | 'medium' | 'close') => {
-    const preset = SHOT_PRESETS.find((item) => item.id === shot) || SHOT_PRESETS[1];
     setDistance(shot);
-    setSofaX(preset.anchorX);
-    setSofaY(preset.anchorY);
-    setHasManualPlacement(false);
-  };
-
-  // Get dynamic scale value depending on Shot Distance selection
-  const getScaleByDistance = () => {
-    const preset = SHOT_PRESETS.find((p) => p.id === distance);
-    return preset ? preset.scale : 0.55;
   };
 
   // Render Interactive Canvas Preview when both images are uploaded
@@ -729,63 +705,12 @@ export default function App() {
           ctx.stroke();
         }
 
-        // Draw Sofa Overlay if product image is loaded
-        if (productImage) {
-          const sofaImg = new Image();
-          if (!productImage.startsWith('data:')) {
-            sofaImg.crossOrigin = 'anonymous';
-          }
-          sofaImg.src = productImage;
-          sofaImg.onload = () => {
-            const sW = sofaImg.width || 1;
-            const sH = sofaImg.height || 1;
-            const scale = getScaleByDistance();
-            const displayW = 800 * scale;
-            const displayH = displayW * (sH / sW);
-
-            const px = 800 * sofaX;
-            const py = 600 * sofaY;
-
-            ctx.save();
-            // Draw contact shadow underneath
-            ctx.save();
-            const r0 = 2;
-            const r1 = displayW * 0.52;
-            if (isFinite(px) && isFinite(py) && isFinite(displayW) && isFinite(displayH) && r0 > 0 && r1 > 0) {
-              try {
-                const shadowGrad = ctx.createRadialGradient(px, py + displayH / 2.3, r0, px, py + displayH / 2.3, r1);
-                shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
-                shadowGrad.addColorStop(0.3, 'rgba(0, 0, 0, 0.25)');
-                shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-                ctx.fillStyle = shadowGrad;
-                ctx.translate(px, py + displayH / 2.3);
-                ctx.scale(1, 0.18);
-                ctx.beginPath();
-                ctx.arc(0, 0, r1, 0, Math.PI * 2);
-                ctx.fill();
-              } catch (e) {
-                console.warn('Failed to draw radial gradient shadow:', e);
-              }
-            }
-            ctx.restore();
-
-            // Draw the sofa image
-            ctx.drawImage(sofaImg, px - displayW / 2, py - displayH / 2, displayW, displayH);
-
-            // Elegantly highlight frame
-            ctx.strokeStyle = 'rgba(184, 151, 90, 0.6)';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(px - displayW / 2 - 3, py - displayH / 2 - 3, displayW + 6, displayH + 6);
-
-            // Anchor center point
-            ctx.fillStyle = '#b8975a';
-            ctx.beginPath();
-            ctx.arc(px, py, 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.restore();
-          };
-        }
+        ctx.fillStyle = 'rgba(44, 41, 38, 0.76)';
+        ctx.fillRect(236, 548, 328, 30);
+        ctx.fillStyle = '#FAF8F5';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('预览仅展示房间参考图，最终摆放由 AI 自动识别', 400, 568);
       };
     } else {
       // Draw placeholder when no room image is provided
@@ -796,42 +721,7 @@ export default function App() {
       ctx.textAlign = 'center';
       ctx.fillText('请在左侧上传【产品参考图】与【房间参考图】以开启空间对齐预览', 400, 300);
     }
-  }, [productImage, roomImage, distance, sofaX, sofaY]);
-
-  // Drag-and-drop position handlers
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!roomImage || !productImage) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    setIsDragging(true);
-    setDragStart({ x, y });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-
-    const dx = x - dragStart.x;
-    const dy = y - dragStart.y;
-    if (Math.abs(dx) > 0.002 || Math.abs(dy) > 0.002) {
-      setHasManualPlacement(true);
-    }
-
-    setSofaX((prev) => Math.min(Math.max(prev + dx, 0.15), 0.85));
-    setSofaY((prev) => Math.min(Math.max(prev + dy, 0.35), 0.85));
-    setDragStart({ x, y });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+  }, [roomImage]);
 
   // Base64 file loaders
   const handleSofaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -847,7 +737,6 @@ export default function App() {
           setResultImage(null); // Reset result on new upload
           setPendingSaasImage(null);
           setPendingSaasSkipConsume(false);
-          setHasManualPlacement(false);
           resultRunRef.current += 1;
         }
       };
@@ -868,7 +757,6 @@ export default function App() {
           setResultImage(null); // Reset result on new upload
           setPendingSaasImage(null);
           setPendingSaasSkipConsume(false);
-          setHasManualPlacement(false);
           resultRunRef.current += 1;
         }
       };
@@ -917,9 +805,7 @@ export default function App() {
         };
 
         if (elapsed >= 0.6) {
-          addLog(hasManualPlacement
-            ? `[识别] 🔍 分析房间骨架与产品体量。手动软参考：X=${(sofaX * 100).toFixed(0)}%, Y=${(sofaY * 100).toFixed(0)}%`
-            : '[识别] 🔍 分析房间骨架、禁放区和产品体量，自动锁定合理沙发落点');
+          addLog('[识别] 🔍 分析房间骨架、原始座位区、禁放区和产品体量，自动锁定合理沙发落点');
         }
         if (elapsed >= 1.6) {
           addLog(`[落位] 📐 锁定唯一摆放区域，并为${currentPreset.name}规划相机距离与镜头高度 ${currentPreset.height}`);
@@ -928,7 +814,7 @@ export default function App() {
           addLog(`[光照] ☀️ 测算原始房间采光漫反射，渲染沙发表面 3D 环境光遮挡 (Ambient Occlusion)`);
         }
         if (elapsed >= 4.8) {
-          addLog(`[阴影] 🕸️ 烘焙地面接触硬/软双重阴影，适配当前选择的：${currentPreset.angle}`);
+          addLog(`[阴影] 🕸️ 烘焙地面接触硬/软双重阴影，镜头角度由空间结构自适应选择`);
         }
         if (elapsed >= 6.8) {
           addLog(`[重绘] 🧬 触发 Imagen-3.1-Image 深度合成算子进行全局光影和纹理重塑...`);
@@ -967,10 +853,7 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        hasManualPlacement,
-        placementX: hasManualPlacement ? sofaX : undefined,
-        placementY: hasManualPlacement ? sofaY : undefined,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。${hasManualPlacement ? '用户拖动坐标只作为软参考，最终以真实可摆放区域为准。' : '用户没有手动指定落位，需自动判断最合理的沙发座位区。'}`
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，优先用产品沙发替换原座位区。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -1613,7 +1496,7 @@ export default function App() {
                 选择沙发生图入口
               </h2>
               <p className="text-[#78716C] max-w-2xl leading-relaxed">
-                常规空间合成保留原有上传、拖拽定位、镜头景别和一键生成流程；AI 对话生图支持自由描述、快捷卡片、上传参考图和对话内生成结果。
+                常规空间合成保留原有上传、镜头景别和一键生成流程；AI 自动识别原座位区与合理落位，对话生图支持自由描述、快捷卡片、上传参考图和对话内生成结果。
               </p>
             </div>
 
@@ -1631,7 +1514,7 @@ export default function App() {
                       常规空间合成
                     </h3>
                     <p className="text-[#78716C] leading-relaxed">
-                      上传沙发图和房间图，系统会自动判断最合理摆放区，也可拖拽作为软参考，选择远景/中景/近景与清晰度，一键生成电商级空间摄影图。
+                      上传沙发图和房间图，系统会自动判断原座位区与最合理摆放区，选择远景/中景/近景与清晰度，一键生成电商级空间摄影图。
                     </p>
                   </div>
                   <ArrowRight className="w-6 h-6 shrink-0 text-[#B8975A] group-hover:translate-x-1 transition-transform" />
@@ -1794,7 +1677,7 @@ export default function App() {
                             视角: {preset.angle}
                           </span>
                           <span className="text-[9px] bg-white border border-stone-200 text-stone-600 px-1.5 py-0.5 rounded font-mono">
-                            画幅比例: {(preset.scale * 100).toFixed(0)}%
+                            景别: {preset.id === 'far' ? '环境占比高' : preset.id === 'medium' ? '主体占比中' : '局部细节'}
                           </span>
                         </div>
                       </div>
@@ -2271,20 +2154,14 @@ export default function App() {
                 >
                   <canvas
                     ref={canvasRef}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    className={`max-w-full max-h-[62vh] rounded-xl shadow-xl border border-[#E8E3D9] bg-white transition-shadow duration-200 ${
-                      productImage && roomImage ? 'cursor-grab active:cursor-grabbing hover:shadow-2xl' : ''
-                    }`}
+                    className="max-w-full max-h-[62vh] rounded-xl shadow-xl border border-[#E8E3D9] bg-white transition-shadow duration-200"
                   />
 
                   {/* Positioning instruction label overlay */}
                   {productImage && roomImage && (
                     <div className="absolute bottom-6 left-6 right-6 pointer-events-none flex justify-center">
                       <span className="bg-black/75 backdrop-blur text-[#FAF8F5] text-[10px] px-3.5 py-1.5 rounded-full shadow-lg border border-white/10 flex items-center gap-1.5">
-                        <Monitor className="w-3 h-3 text-[#B8975A]" /> 系统会自动选择合理落位，拖动仅作为软参考
+                        <Monitor className="w-3 h-3 text-[#B8975A]" /> AI 自动识别原座位区与合理落位，预览不参与生成
                       </span>
                     </div>
                   )}
