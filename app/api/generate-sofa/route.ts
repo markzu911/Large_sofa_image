@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import {
   generatePlacementPlanWithGemini,
+  generateProductIdentityWithGemini,
   generateImageWithGemini,
   getBase64FromUrlOrData,
   saveGeneratedImageToSaas,
@@ -62,6 +63,7 @@ function buildPrompt({
   shotName,
   cameraSpec,
   placementPlan,
+  productIdentity,
 }: {
   angle: string;
   height: string;
@@ -71,19 +73,33 @@ function buildPrompt({
   shotName: string;
   cameraSpec: string;
   placementPlan: string;
+  productIdentity: string;
 }) {
   return `
 你是一位极其严谨的专业家居电商摄影师和空间合成专家。
-你的任务是把【产品参考图】中的沙发本体，无缝融入【房间参考图】的真实空间，并生成单张照片级电商图片。
+你的任务是把【产品参考图】中的同一件沙发本体，无缝融入【房间参考图】的真实空间，并生成单张照片级电商图片。
 
 【参考图角色隔离】
 1. 【房间参考图】是唯一的房间结构、墙面、窗户、门洞、电视墙/媒体墙、固定柜体、地面、吊顶和光线来源。
-2. 【产品参考图】只允许用于提取沙发本体：款式、轮廓、比例、材质、颜色、纹理和细节。
+2. 【产品参考图】是最高优先级的商品身份来源，只允许用于复刻同一件沙发本体：款式、轮廓、比例、材质、颜色、纹理、结构和细节。
 3. 忽略【产品参考图】里的所有背景空间和其他物体，最终画面必须一眼看出仍然是【房间参考图】里的房间。
+4. 【房间参考图】里的装饰、文字、商标、画作内容、抱枕图案、临时摆件不能转移到产品沙发上；房间只提供空间、光线和可替换家具关系。
+
+【产品身份锁定 - 最高优先级】
+${productIdentity}
+
+硬性执行：
+1. 最终沙发必须是产品参考图里的同一件商品，不是“同风格沙发”、不是“意式沙发概念图”、不是重新设计后的相似款。
+2. 只允许为适配房间透视、光线和拍摄角度做摄影级投影变化；不得改变沙发本体的轮廓、结构、模块数量、扶手/靠背/坐垫形态、缝线、扣点、褶皱、材质纹理、颜色和附属物状态。
+3. 如果产品图没有抱枕、靠包、毯子、文字、Logo、图案、标签或刺绣，最终产品沙发上也绝对不能出现这些东西；房间原有抱枕/装饰可以被移除或放在非产品区域，但不能套到商品沙发上。
+4. 产品图背景中的墙面文字、标题、标签、道具和房间装饰不是产品信息，不能复制到最终图。
 
 【产品还原】
-1. 保留沙发本体的款式、轮廓、座位数量、扶手/靠背结构、坐垫厚度、缝线、褶皱、腿部结构、材质纹理和原本颜色。
-2. 不要擅自改款、增减模块、改变比例，或把产品图背景带入最终图。
+1. 100% 保留沙发本体的款式、轮廓、座位数量、扶手/靠背结构、坐垫厚度、缝线、扣点/凹陷、褶皱、腿部/底座结构、材质纹理和原本颜色。
+2. 不要擅自改款、增减模块、改变比例、简化细节、柔化轮廓、替换材质，或把产品图背景带入最终图。
+3. 严禁私自添加产品参考图中没有的任何信息：文字、数字、Logo、商标、品牌名、印章、标签、刺绣、图案、徽章、贴纸、花纹、二维码、水印。
+4. 抱枕、靠包、毯子、装饰件只在产品参考图中清晰存在时才允许出现；如果出现，必须保持原样。产品图里没有文字/Logo的抱枕，最终图也必须是纯净无字无Logo的抱枕。不确定时按“没有文字/Logo/图案”处理。
+5. 可以移除房间原图中与产品无关的抱枕、临时装饰、文字物件；不要把它们复制到产品沙发或抱枕上。
 
 【房间构造】
 1. 锁定房间参考图中的墙体关系、窗户/窗帘、门洞、电视墙/媒体墙、固定柜体、吊顶/梁、地面透视、墙角、光线方向和整体空间比例。
@@ -120,10 +136,10 @@ ${placementPlan}
 1. 远景/中景/近景共用同一个物理落位；差异来自摄影机，而不是沙发换位置或换大小贴图。
 2. 摄影机可以从正面、侧面、背侧或斜侧拍摄，角度由合理落位和产品展示共同决定。
 3. 沙发必须按房间透视缩放，底座/脚部贴合地面，并有真实接触阴影和投射阴影。
-4. 如果产品图角度与房间最合理落位冲突，保持房间落位正确，选择最接近且真实可拍的商品角度。
+4. 如果产品图角度与房间最合理落位冲突，保持房间落位正确，但仍要复刻同一件沙发的真实结构；只改变可拍摄角度，不改变产品样式。
 
 【画面质量】
-照片级真实摄影，高端电商主图质感，光影、比例、透视、地面接触关系真实；不要出现文字、水印、额外品牌 LOGO、人物、拼图、分屏、漫画或插画风格。
+照片级真实摄影，高端电商主图质感，光影、比例、透视、地面接触关系真实；不要出现任何新增文字、水印、品牌 LOGO、商标、标签、刺绣、图案、人物、拼图、分屏、漫画或插画风格。
 
 请生成最终合成后的单张实景照片。
 `;
@@ -183,6 +199,17 @@ export async function POST(req: Request) {
     let modelUsed;
     let infoText;
     const placementHint = '不使用任何前端预览坐标或默认锚点；必须完全根据房间参考图自动识别最合理座位区。如果原房间已有沙发/座椅，优先用产品沙发替换原座位区，保持原来的朝向、会客关系和动线；有电视/媒体墙时必须在电视对侧或斜对侧，禁止电视同侧贴墙和电视下方。';
+    let productIdentity = '未单独返回商品身份分析；最终仍必须把产品参考图作为最高优先级，100% 保持同一件沙发的轮廓、结构、模块数量、扶手/靠背/坐垫形态、缝线、扣点、褶皱、材质纹理、颜色和附属物状态；禁止新增产品图没有的抱枕、文字、Logo、图案、标签或装饰。';
+    try {
+      productIdentity = await generateProductIdentityWithGemini({
+        productData: productData.data,
+        productMimeType: productData.mimeType,
+      });
+      console.info('Generated product identity:', productIdentity.slice(0, 800));
+    } catch (identityErr: any) {
+      console.warn('Product identity analysis failed, falling back to built-in product guard:', identityErr.message || identityErr);
+    }
+
     let placementPlan = '空间落位分析未单独返回；请按房间参考图中的真实地面、原座位区、会客区、窗户、门洞、固定柜体、电视/媒体墙和主要通道，选择最稳定且不挡光不挡路的可摆放区域；如果已有原沙发/座椅，必须优先替换原座位区；有电视/媒体墙时必须在电视对侧或斜对侧，不能在电视所在墙同侧或电视下方。';
     try {
       placementPlan = await generatePlacementPlanWithGemini({
@@ -201,10 +228,10 @@ export async function POST(req: Request) {
     try {
       ({ generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
         parts: [
-          { text: '【房间参考图】唯一空间来源：必须锁定此房间的墙体、窗户、门洞、电视墙/媒体墙、固定柜体、吊顶、地面和光线。' },
-          { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
-          { text: '【产品参考图】只提取沙发本体的款式、比例、材质、颜色和细节；必须忽略这张图里的房间背景、柜墙、灯具、茶几和所有其他物体。' },
+          { text: '【产品参考图 - 商品身份最高优先级】必须复刻这同一件沙发本体。只提取沙发的轮廓、结构、模块数量、扶手/靠背/坐垫形态、缝线、扣点、褶皱、材质纹理、原本颜色和真实附属物；这不是风格参考，禁止生成相似款或改款。除非产品图中清晰存在于沙发本体上，否则严禁新增任何文字、Logo、品牌名、商标、图案、刺绣、标签、抱枕、靠包、毯子或装饰。必须忽略这张图里的房间背景、墙面文字、柜墙、灯具、茶几和所有其他物体。' },
           { inlineData: { data: productData.data, mimeType: productData.mimeType } },
+          { text: '【房间参考图 - 空间结构来源】只用于锁定此房间的墙体、窗户、门洞、电视墙/媒体墙、固定柜体、吊顶、地面、光线、原座位区和可替换家具关系；不要用房间图里的原沙发款式、抱枕、文字或装饰改变产品沙发。' },
+          { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
           {
             text: buildPrompt({
               angle,
@@ -215,6 +242,7 @@ export async function POST(req: Request) {
               cameraSpec,
               placementHint,
               placementPlan,
+              productIdentity,
             }),
           },
         ],

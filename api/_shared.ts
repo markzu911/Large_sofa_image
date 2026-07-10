@@ -397,7 +397,7 @@ export async function generatePlacementPlanWithGemini({
 只输出中文结构化方案，不生成图片，不要写寒暄。必须按以下标题输出：
 0. 执行口令：用一句话写清最终摆放命令，格式为“把沙发放在【画面方位/坐标范围】的【可放区名称】，主坐面朝向【目标墙/电视/会客中心】，禁止放在【本图关键禁放区】。”如果房间原图已有沙发/座椅，执行口令必须优先写“替换原沙发/原座位区”。
 1. 房间骨架锁定：说明电视/媒体墙、窗户/窗帘、门洞/阳台门、固定柜体、墙角、地面透视、主要通道分别在画面什么方位；不确定就写“不明确”，不要臆造。
-2. 产品体量判断：根据产品图判断沙发是单人/双人/三人/多人/L形/躺位/组合模块，大致长宽比例、主坐面、靠背侧、扶手侧。
+2. 产品体量判断：根据产品图判断沙发是单人/双人/三人/多人/L形/躺位/组合模块，大致长宽比例、主坐面、靠背侧、扶手侧；只识别产品图中清晰存在的抱枕/靠包/装饰件，不要臆造文字、Logo、商标、标签、刺绣或图案。
 3. 电视观看关系：如果有电视/媒体墙，必须写清“电视所在墙/同侧贴墙区/电视下方/遮挡电视屏幕区域”为禁放区，并写清“电视对侧或斜对侧的观看区”为优先可放区；如果没有电视/媒体墙，写“无明确电视观看关系”。
 4. 可替换对象：房间里哪些原有可移动家具可以被商品沙发替换或移走；如果存在原沙发/座椅，必须明确它的位置、朝向、占地区域，并把它列为最高优先级替换对象；哪些结构和固定家具绝对不能动。
 5. 禁入边界：逐条列出本图不能放沙发的区域，尤其是窗户/窗帘主体前、门洞、通道、电视所在墙同侧贴墙区、电视下方、会遮挡电视屏幕的位置、固定柜体前、墙体开口、过窄或非地面的区域。
@@ -423,6 +423,7 @@ export async function generatePlacementPlanWithGemini({
 - 远景/中景/近景共用同一个“唯一锁定落点”，只能改变相机位置、焦段、高度、景深和裁切，不能改变房间构造，也不能重新选择沙发位置。
 - 拍摄角度不固定，可以正面、侧面、背侧或斜侧；角度只服务于远景/中景/近景区分和产品展示，不能改变唯一锁定落点。
 - 当商品展示角度与合理落位冲突时，优先合理落位；通过相机移动、焦段、裁切和景深来展示商品。
+- 产品纯净度：最终图不能新增产品参考图中没有的文字、Logo、品牌名、商标、图案、刺绣、标签、徽章或额外抱枕；房间图中的装饰文字、画作、抱枕图案和临时摆件不能转移到产品沙发上。
 `,
     },
     { text: '【房间参考图】请以这张图作为唯一空间结构来源。' },
@@ -431,7 +432,7 @@ export async function generatePlacementPlanWithGemini({
 
   if (productData && productMimeType) {
     parts.push(
-      { text: '【沙发产品参考图】只用于判断沙发体量、朝向展示需求和大致形态，不要采用其中的房间背景。' },
+      { text: '【沙发产品参考图】只用于判断沙发体量、朝向展示需求和大致形态；除非产品图中清晰存在，否则不要新增任何文字、Logo、品牌名、商标、图案、刺绣、标签或额外抱枕；不要采用其中的房间背景。' },
       { inlineData: { data: productData, mimeType: productMimeType } },
     );
   }
@@ -458,6 +459,66 @@ export async function generatePlacementPlanWithGemini({
     .trim();
   if (!partText) {
     throw new Error('空间落位分析未返回文本方案');
+  }
+  return partText;
+}
+
+export async function generateProductIdentityWithGemini({
+  productData,
+  productMimeType,
+}: {
+  productData: string;
+  productMimeType: string;
+}) {
+  const client = getGeminiClient();
+  const parts: any[] = [
+    {
+      text: `
+你是一位极其严格的商品视觉身份分析师。请只分析【沙发产品参考图】里的沙发本体，输出供后续 AI 生图 100% 还原同一件商品使用的“产品身份指纹”。
+
+核心原则：
+- 产品参考图不是风格参考，而是唯一商品外观来源。后续生成必须是同一件沙发，不是相似款、同类款、重设计款或更好看的改款。
+- 必须把沙发本体与背景隔离。墙面文字、标题、价格、标签、海报字、房间家具、地毯、茶几、灯具、柜体、摆件、水印、界面按钮都不是产品本体。
+- 只记录图片中清晰可见的事实；不确定就写“不确定/未见”，不要脑补。
+- 如果产品图里没有抱枕、靠包、毯子、印花、Logo、文字、标签或装饰件，必须明确写“未见，最终图禁止新增”。
+
+只输出中文结构化文本，不要写寒暄，不要生成图片。必须按以下标题输出：
+1. 产品身份一句话：用一句话说明这是一件什么沙发，以及最终图必须保持“同一件商品”。
+2. 不可变整体轮廓：沙发长宽高比例、座位数量/模块数量、整体宽窄厚薄、靠背高度、顶部线条、底部落地方式。
+3. 不可变结构：扶手位置和形状、靠背结构、坐垫/座包分割、缝线/拼接、凹陷/扣点/褶皱、腿部/底座、左右对称或不对称关系。
+4. 不可变材质颜色：主色、明暗层次、面料/皮革质感、纹理颗粒、光泽、软硬和厚重感。
+5. 可见附属物：只列沙发本体上真实存在的抱枕、靠包、毯子、图案、文字、Logo、标签；没有就逐项写“未见，最终图禁止新增”。
+6. 必须忽略的非产品信息：列出产品图中的背景、墙面文字、空间装饰、其他家具或界面元素，说明最终图不能把这些复制到沙发或房间里。
+7. 绝对禁止改动：写出最容易被模型改错的 5-8 项，例如改变颜色、改扶手、改靠背、改坐垫数量、加抱枕、加文字/Logo、换成相似款、简化纹理等。
+8. 最终硬约束口令：一句话，格式为“生成时只允许改变房间、光线透视适配和摄影角度；沙发本体必须与产品参考图的轮廓、结构、颜色、材质、模块和细节完全一致，禁止新增产品图没有的任何信息。”
+`,
+    },
+    { text: '【沙发产品参考图】只分析沙发本体，背景文字和空间不是商品。' },
+    { inlineData: { data: productData, mimeType: productMimeType } },
+  ];
+
+  const response = await retryWithBackoff(() => withTimeout(
+    client.models.generateContent({
+      model: process.env.GEMINI_PRODUCT_IDENTITY_MODEL || process.env.GEMINI_PLACEMENT_MODEL || 'gemini-2.5-flash',
+      contents: { parts },
+      config: {
+        responseMimeType: 'text/plain',
+      },
+    }),
+    Number(process.env.PRODUCT_IDENTITY_TIMEOUT_MS || 18000),
+    '商品身份分析超时，请稍后重试'
+  ), 1);
+
+  const directText = typeof response.text === 'string' ? response.text.trim() : '';
+  if (directText) return directText;
+
+  const partText = (response.candidates?.[0]?.content?.parts || [])
+    .map((part: any) => part.text || '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+  if (!partText) {
+    throw new Error('商品身份分析未返回文本方案');
   }
   return partText;
 }

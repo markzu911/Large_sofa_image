@@ -853,7 +853,7 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，优先用产品沙发替换原座位区。`
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，优先用产品沙发替换原座位区。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -1176,7 +1176,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n商品约束：如果有沙发商品图，必须把它作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用参考图里的非产品信息。\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
