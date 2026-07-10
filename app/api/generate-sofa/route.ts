@@ -1,9 +1,11 @@
 import { after } from 'next/server';
 import {
+  createPlacementGuideFromPlan,
   generatePlacementPlanWithGemini,
   generateProductIdentityWithGemini,
   generateImageWithGemini,
   getBase64FromUrlOrData,
+  renderPlacementGuidePngBase64,
   saveGeneratedImageToSaas,
   type SaasInfo,
   verifyBeforeGenerate,
@@ -145,6 +147,13 @@ ${customPrompt ? `- 附加描述: ${customPrompt}` : ''}
 【本次房间落位方案 - 必须优先执行】
 ${placementPlan}
 
+【自动落位遮罩图规则】
+如果输入中包含【自动落位遮罩图】，它是内部空间坐标辅助图，不是最终画面内容。
+1. 红色区域是禁放区，产品沙发主体、底座、靠背、扶手和坐垫都不能进入红色区域。
+2. 绿色区域是产品沙发主体的目标落位区，沙发中心和主要体量必须落在绿色区域内。
+3. 绿色箭头表示沙发主坐面/开口侧应朝向的方向。
+4. 不要在最终图里渲染遮罩的颜色、箭头、边框或任何辅助图痕迹。
+
 【执行顺序 - 不可跳过】
 1. 先在产品图中只抠取沙发本体，明确非沙发物件全部丢弃。
 2. 再读取并执行“唯一锁定落点”：沙发中心区域、底部接触地面、主坐面朝向和禁入边界都以该方案为准。
@@ -257,6 +266,17 @@ export async function POST(req: Request) {
       console.warn('Placement plan analysis failed, falling back to built-in placement guard:', planErr.message || planErr);
     }
 
+    const placementGuide = createPlacementGuideFromPlan(placementPlan);
+    const placementGuideImage = placementGuide ? renderPlacementGuidePngBase64(placementGuide) : null;
+    if (placementGuide) {
+      console.info('Generated placement guide:', {
+        tvWall: placementGuide.tvWall,
+        targetZone: placementGuide.targetZone,
+        forbiddenZones: placementGuide.forbiddenZones,
+        facing: placementGuide.facing,
+      });
+    }
+
     try {
       ({ generatedBase64, mimeType, modelUsed, infoText } = await generateImageWithGemini({
         parts: [
@@ -264,6 +284,10 @@ export async function POST(req: Request) {
           { inlineData: { data: productData.data, mimeType: productData.mimeType } },
           { text: '【房间参考图 - 空间结构来源】只用于锁定此房间的墙体、窗户、门洞、电视墙/媒体墙、固定柜体、吊顶、地面、光线、原座位区和可替换家具关系；房间图里的原沙发/原座椅是空间落位线索，可以替换、保留或轻微调整，具体以最合理摆放为准；不要用房间图里的原沙发款式、抱枕、文字或装饰改变产品沙发。' },
           { inlineData: { data: roomData.data, mimeType: roomData.mimeType } },
+          ...(placementGuideImage ? [
+            { text: `【自动落位遮罩图 - 内部辅助，不得渲染】红色区域为绝对禁放区，沙发主体任何部分都不能进入；绿色区域为沙发主体目标落位区，沙发中心和主要体量必须落入；绿色箭头表示主坐面/开口侧朝向。${placementGuide?.instruction || ''}` },
+            { inlineData: { data: placementGuideImage, mimeType: 'image/png' } },
+          ] : []),
           {
             text: buildPrompt({
               angle,

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { deflateSync } from 'node:zlib';
 
 export const MAX_INPUT_IMAGE_BYTES = 2 * 1024 * 1024;
 export const AI_GENERATION_TIMEOUT_MS = Number(process.env.AI_GENERATION_TIMEOUT_MS || 32000);
@@ -10,6 +11,22 @@ const TRANSIENT_ERROR_PATTERN = /503|504|429|UNAVAILABLE|RESOURCE_EXHAUSTED|time
 let aiClient: GoogleGenAI | null = null;
 
 type SaasSaveStep = 'consume' | 'upload-token' | 'oss-upload' | 'upload-commit';
+
+export type PlacementBox = {
+  xMin: number;
+  yMin: number;
+  xMax: number;
+  yMax: number;
+  reason?: string;
+};
+
+export type PlacementGuide = {
+  tvWall: 'left' | 'right' | 'back' | 'front' | 'none' | 'unknown';
+  targetZone: PlacementBox;
+  forbiddenZones: PlacementBox[];
+  facing: 'left' | 'right' | 'up' | 'down' | 'left-up' | 'right-up';
+  instruction: string;
+};
 
 export type SaasInfo = {
   userId?: string | null;
@@ -371,6 +388,309 @@ export async function generateImageWithGemini({
   }
 
   throw lastError || new Error('模型生成失败');
+}
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+function normalizePlacementBox(box: PlacementBox): PlacementBox {
+  const xMin = clampPercent(Math.min(box.xMin, box.xMax));
+  const xMax = clampPercent(Math.max(box.xMin, box.xMax));
+  const yMin = clampPercent(Math.min(box.yMin, box.yMax));
+  const yMax = clampPercent(Math.max(box.yMin, box.yMax));
+  return {
+    ...box,
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+  };
+}
+
+function detectTvWallFromPlan(plan: string): PlacementGuide['tvWall'] {
+  const compact = plan.replace(/\s+/g, '');
+  const focused = compact.match(/(?:房间骨架锁定|电视观看关系|唯一锁定落点)(.{0,420})/)?.[1] || compact.slice(0, 900);
+  if (/(电视|媒体墙|观看墙)[^。；，,]*(画面左|左侧墙|左墙|左侧)/.test(focused)) return 'left';
+  if (/(电视|媒体墙|观看墙)[^。；，,]*(画面右|右侧墙|右墙|右侧)/.test(focused)) return 'right';
+  if (/(电视|媒体墙|观看墙)[^。；，,]*(后墙|上方|背景墙|正前方墙|主背景墙)/.test(focused)) return 'back';
+  if (/(电视|媒体墙|观看墙)[^。；，,]*(前景|下方近处|画面下方)/.test(focused)) return 'front';
+  if (/无明确电视|电视.*不明确|媒体墙.*不明确/.test(focused)) return 'none';
+  return 'unknown';
+}
+
+function extractTargetBoxFromPlan(plan: string): PlacementBox | null {
+  const targetSection = plan.match(/(?:唯一锁定落点|执行口令)([\s\S]{0,900})/)?.[1] || plan;
+  const xThenY = targetSection.match(/X\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％][\s\S]{0,120}?Y\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％]/i);
+  if (xThenY) {
+    return normalizePlacementBox({
+      xMin: Number(xThenY[1]),
+      xMax: Number(xThenY[2]),
+      yMin: Number(xThenY[3]),
+      yMax: Number(xThenY[4]),
+      reason: '落位方案中的唯一锁定坐标',
+    });
+  }
+
+  const yThenX = targetSection.match(/Y\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％][\s\S]{0,120}?X\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％]/i);
+  if (yThenX) {
+    return normalizePlacementBox({
+      yMin: Number(yThenX[1]),
+      yMax: Number(yThenX[2]),
+      xMin: Number(yThenX[3]),
+      xMax: Number(yThenX[4]),
+      reason: '落位方案中的唯一锁定坐标',
+    });
+  }
+
+  return null;
+}
+
+function fallbackGuideByTvWall(tvWall: PlacementGuide['tvWall']): Pick<PlacementGuide, 'targetZone' | 'forbiddenZones' | 'facing' | 'instruction'> | null {
+  if (tvWall === 'left') {
+    return {
+      targetZone: { xMin: 52, yMin: 48, xMax: 90, yMax: 84, reason: '左墙电视的对侧/斜对侧观看区' },
+      forbiddenZones: [{ xMin: 0, yMin: 0, xMax: 46, yMax: 100, reason: '左墙电视同侧、电视下方和电视旁边区域禁放' }],
+      facing: 'left',
+      instruction: '电视在画面左侧墙：沙发主体必须远离左墙电视，落在右半部/右下/中下观看区，主坐面朝左或左上看电视。',
+    };
+  }
+  if (tvWall === 'right') {
+    return {
+      targetZone: { xMin: 10, yMin: 48, xMax: 48, yMax: 84, reason: '右墙电视的对侧/斜对侧观看区' },
+      forbiddenZones: [{ xMin: 54, yMin: 0, xMax: 100, yMax: 100, reason: '右墙电视同侧、电视下方和电视旁边区域禁放' }],
+      facing: 'right',
+      instruction: '电视在画面右侧墙：沙发主体必须远离右墙电视，落在左半部/左下/中下观看区，主坐面朝右或右上看电视。',
+    };
+  }
+  if (tvWall === 'back') {
+    return {
+      targetZone: { xMin: 18, yMin: 58, xMax: 82, yMax: 90, reason: '后墙电视的前景观看区' },
+      forbiddenZones: [{ xMin: 0, yMin: 0, xMax: 100, yMax: 42, reason: '后墙电视同侧和电视下方区域禁放' }],
+      facing: 'up',
+      instruction: '电视在画面后墙/上方背景墙：沙发主体必须落在下方观看区，主坐面朝后墙或上方看电视。',
+    };
+  }
+  if (tvWall === 'front') {
+    return {
+      targetZone: { xMin: 18, yMin: 10, xMax: 82, yMax: 46, reason: '前景电视的中后方观看区' },
+      forbiddenZones: [{ xMin: 0, yMin: 54, xMax: 100, yMax: 100, reason: '前景电视同侧区域禁放' }],
+      facing: 'down',
+      instruction: '电视在画面前景/下方：沙发主体必须落在中后方观看区，主坐面朝前景或下方看电视。',
+    };
+  }
+  return null;
+}
+
+export function createPlacementGuideFromPlan(placementPlan: string): PlacementGuide | null {
+  if (!placementPlan || placementPlan.startsWith('空间落位分析未单独返回')) return null;
+
+  const tvWall = detectTvWallFromPlan(placementPlan);
+  const fallback = fallbackGuideByTvWall(tvWall);
+  const parsedTarget = extractTargetBoxFromPlan(placementPlan);
+  let targetZone = parsedTarget || fallback?.targetZone;
+  let forbiddenZones = fallback?.forbiddenZones || [];
+  let facing = fallback?.facing || 'left';
+  let instruction = fallback?.instruction || '根据绿色目标区放置沙发主体，避开红色禁放区，主坐面朝向房间会客中心。';
+
+  if (!targetZone) return null;
+
+  targetZone = normalizePlacementBox(targetZone);
+  if (tvWall === 'left' && targetZone.xMin < 50 && fallback) {
+    targetZone = fallback.targetZone;
+    forbiddenZones = fallback.forbiddenZones;
+    facing = fallback.facing;
+    instruction = fallback.instruction;
+  }
+  if (tvWall === 'right' && targetZone.xMax > 50 && fallback) {
+    targetZone = fallback.targetZone;
+    forbiddenZones = fallback.forbiddenZones;
+    facing = fallback.facing;
+    instruction = fallback.instruction;
+  }
+  if (tvWall === 'back' && targetZone.yMin < 50 && fallback) {
+    targetZone = fallback.targetZone;
+    forbiddenZones = fallback.forbiddenZones;
+    facing = fallback.facing;
+    instruction = fallback.instruction;
+  }
+  if (tvWall === 'front' && targetZone.yMax > 50 && fallback) {
+    targetZone = fallback.targetZone;
+    forbiddenZones = fallback.forbiddenZones;
+    facing = fallback.facing;
+    instruction = fallback.instruction;
+  }
+
+  return {
+    tvWall,
+    targetZone: normalizePlacementBox(targetZone),
+    forbiddenZones: forbiddenZones.map(normalizePlacementBox),
+    facing,
+    instruction,
+  };
+}
+
+const crcTable = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buffer: Buffer) {
+  let c = 0xffffffff;
+  for (const byte of buffer) {
+    c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type: string, data: Buffer) {
+  const typeBuffer = Buffer.from(type, 'ascii');
+  const chunk = Buffer.alloc(12 + data.length);
+  chunk.writeUInt32BE(data.length, 0);
+  typeBuffer.copy(chunk, 4);
+  data.copy(chunk, 8);
+  const crc = crc32(Buffer.concat([typeBuffer, data]));
+  chunk.writeUInt32BE(crc, 8 + data.length);
+  return chunk;
+}
+
+function drawPlacementRect(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  box: PlacementBox,
+  color: [number, number, number],
+  alpha: number,
+) {
+  const x0 = Math.max(0, Math.min(width - 1, Math.round((box.xMin / 100) * width)));
+  const x1 = Math.max(0, Math.min(width, Math.round((box.xMax / 100) * width)));
+  const y0 = Math.max(0, Math.min(height - 1, Math.round((box.yMin / 100) * height)));
+  const y1 = Math.max(0, Math.min(height, Math.round((box.yMax / 100) * height)));
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const idx = (y * width + x) * 4;
+      pixels[idx] = Math.round(pixels[idx] * (1 - alpha) + color[0] * alpha);
+      pixels[idx + 1] = Math.round(pixels[idx + 1] * (1 - alpha) + color[1] * alpha);
+      pixels[idx + 2] = Math.round(pixels[idx + 2] * (1 - alpha) + color[2] * alpha);
+      pixels[idx + 3] = 255;
+    }
+  }
+}
+
+function drawPlacementLine(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  start: [number, number],
+  end: [number, number],
+  color: [number, number, number],
+  thickness: number,
+) {
+  const steps = Math.max(Math.abs(end[0] - start[0]), Math.abs(end[1] - start[1]), 1);
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const cx = Math.round(start[0] + (end[0] - start[0]) * t);
+    const cy = Math.round(start[1] + (end[1] - start[1]) * t);
+    for (let yy = -thickness; yy <= thickness; yy += 1) {
+      for (let xx = -thickness; xx <= thickness; xx += 1) {
+        const x = cx + xx;
+        const y = cy + yy;
+        if (x < 0 || x >= width || y < 0 || y >= height || xx * xx + yy * yy > thickness * thickness) continue;
+        const idx = (y * width + x) * 4;
+        pixels[idx] = color[0];
+        pixels[idx + 1] = color[1];
+        pixels[idx + 2] = color[2];
+        pixels[idx + 3] = 255;
+      }
+    }
+  }
+}
+
+function drawPlacementArrow(pixels: Uint8Array, width: number, height: number, guide: PlacementGuide) {
+  const box = guide.targetZone;
+  const x0 = Math.round((box.xMin / 100) * width);
+  const x1 = Math.round((box.xMax / 100) * width);
+  const y0 = Math.round((box.yMin / 100) * height);
+  const y1 = Math.round((box.yMax / 100) * height);
+  const center: [number, number] = [Math.round((x0 + x1) / 2), Math.round((y0 + y1) / 2)];
+  const insetX = Math.max(20, Math.round((x1 - x0) * 0.16));
+  const insetY = Math.max(20, Math.round((y1 - y0) * 0.16));
+  const end: [number, number] =
+    guide.facing === 'right'
+      ? [x1 - insetX, center[1]]
+      : guide.facing === 'up'
+      ? [center[0], y0 + insetY]
+      : guide.facing === 'down'
+      ? [center[0], y1 - insetY]
+      : guide.facing === 'left-up'
+      ? [x0 + insetX, y0 + insetY]
+      : guide.facing === 'right-up'
+      ? [x1 - insetX, y0 + insetY]
+      : [x0 + insetX, center[1]];
+
+  drawPlacementLine(pixels, width, height, center, end, [20, 112, 74], 7);
+  const dx = end[0] - center[0];
+  const dy = end[1] - center[1];
+  const len = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+  const ux = dx / len;
+  const uy = dy / len;
+  const head = 30;
+  const half = 18;
+  const p1: [number, number] = [
+    Math.round(end[0] - ux * head - uy * half),
+    Math.round(end[1] - uy * head + ux * half),
+  ];
+  const p2: [number, number] = [
+    Math.round(end[0] - ux * head + uy * half),
+    Math.round(end[1] - uy * head - ux * half),
+  ];
+  drawPlacementLine(pixels, width, height, p1, end, [20, 112, 74], 7);
+  drawPlacementLine(pixels, width, height, p2, end, [20, 112, 74], 7);
+}
+
+export function renderPlacementGuidePngBase64(guide: PlacementGuide, width = 1024, height = 768) {
+  const pixels = new Uint8Array(width * height * 4);
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i] = 245;
+    pixels[i + 1] = 241;
+    pixels[i + 2] = 232;
+    pixels[i + 3] = 255;
+  }
+
+  for (const zone of guide.forbiddenZones) {
+    drawPlacementRect(pixels, width, height, zone, [220, 54, 48], 0.42);
+  }
+  drawPlacementRect(pixels, width, height, guide.targetZone, [50, 190, 112], 0.54);
+  drawPlacementArrow(pixels, width, height, guide);
+
+  const raw = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const rowStart = y * (width * 4 + 1);
+    raw[rowStart] = 0;
+    Buffer.from(pixels.subarray(y * width * 4, (y + 1) * width * 4)).copy(raw, rowStart + 1);
+  }
+
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8;
+  header[9] = 6;
+  header[10] = 0;
+  header[11] = 0;
+  header[12] = 0;
+
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+  return png.toString('base64');
 }
 
 export async function generatePlacementPlanWithGemini({
