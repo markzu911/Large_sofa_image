@@ -918,11 +918,11 @@ export default function App() {
 
         if (elapsed >= 0.6) {
           addLog(hasManualPlacement
-            ? `[识别] 🔍 提取【产品参考图】透视轴。手动软参考：X=${(sofaX * 100).toFixed(0)}%, Y=${(sofaY * 100).toFixed(0)}%`
-            : '[识别] 🔍 提取【产品参考图】透视轴。未使用默认坐标，改由房间结构自动判断落位');
+            ? `[识别] 🔍 分析房间骨架与产品体量。手动软参考：X=${(sofaX * 100).toFixed(0)}%, Y=${(sofaY * 100).toFixed(0)}%`
+            : '[识别] 🔍 分析房间骨架、禁放区和产品体量，自动锁定合理沙发落点');
         }
         if (elapsed >= 1.6) {
-          addLog(`[透视] 📐 校准【房间参考图】透视消失线，开始匹配镜头高度 ${currentPreset.height}`);
+          addLog(`[落位] 📐 锁定唯一摆放区域，并为${currentPreset.name}规划相机距离与镜头高度 ${currentPreset.height}`);
         }
         if (elapsed >= 3.0) {
           addLog(`[光照] ☀️ 测算原始房间采光漫反射，渲染沙发表面 3D 环境光遮挡 (Ambient Occlusion)`);
@@ -943,7 +943,7 @@ export default function App() {
           addLog(`[SaaS] 💾 检验工具 SaaS 调用权限，正在向云端对象存储 (OSS) 同步合成缓存记录...`);
         }
         if (elapsed >= 16.5) {
-          addLog(`[校验] 🔄 图像色彩空间对齐，匹配白平衡色温并准备渲染预览大图...`);
+          addLog(`[渲染] 🔄 图像色彩空间对齐，匹配白平衡色温并准备渲染预览大图...`);
         }
         return logs;
       });
