@@ -85,25 +85,25 @@ const SHOT_PRESETS = [
     id: 'far',
     name: '远景：空间全貌',
     height: '自适应站立机位',
-    angle: '广角空间镜头，入口/对角线/侧方自适应',
-    description: '相机后退到房间入口或对角线位置，完整看空间结构和沙发落位。',
-    promptGuide: '远景：相机后退到同一房间的入口、对角线或侧方开阔位置，广角展示完整空间；拍摄角度自适应，沙发占比小但落位必须合理。'
+    angle: '广角空间镜头，入口/对角线/侧方自适应，不改变沙发物理坐向',
+    description: '相机后退到房间入口或对角线位置，完整看空间结构和真实落位。',
+    promptGuide: '远景：相机后退到同一房间的入口、对角线或侧方开阔位置，广角展示完整空间；拍摄角度自适应，但沙发物理坐向必须朝向电视/茶几/会客中心，沙发占比小且落位合理。'
   },
   {
     id: 'medium',
     name: '中景：电商主图',
     height: '自适应视平机位',
-    angle: '标准主图镜头，正面/侧面/斜侧自适应',
-    description: '相机站在沙发前方约2-3米，主体清楚，仍保留地面和背景。',
-    promptGuide: '中景：相机靠近到主图距离，拍摄角度自适应；沙发是主体，同时保留地面接触和真实背景。'
+    angle: '标准主图镜头，从合理落位后的通道侧/斜侧/对角线拍摄',
+    description: '相机靠近合理落位后的沙发，主体清楚，仍保留地面接触和背景。',
+    promptGuide: '中景：相机靠近到主图距离，拍摄角度自适应；沙发是主体，但只能移动相机，不能为了正面展示把沙发旋转成朝镜头、拉到前景或放到房间中央。'
   },
   {
     id: 'close',
     name: '近景：材质细节',
     height: '自适应近摄机位',
-    angle: '中长焦细节镜头，正面/侧面/斜侧自适应',
-    description: '相机靠近沙发约0.8-1.4米，突出面料、扶手、坐垫和缝线。',
-    promptGuide: '近景：相机靠近已经合理落位的沙发，拍摄角度自适应；突出材质、扶手、坐垫、缝线和接触阴影，可以自然裁切局部。'
+    angle: '中长焦细节镜头，从已落位沙发的可拍侧靠近',
+    description: '相机靠近已合理落位的沙发，突出面料、扶手、坐垫和缝线。',
+    promptGuide: '近景：相机靠近已经合理落位的沙发，拍摄角度自适应；突出材质、扶手、坐垫、缝线和接触阴影，可以自然裁切局部，但不能把完整沙发拉到镜头前重新摆放。'
   }
 ] as const;
 
@@ -853,7 +853,7 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，优先用产品沙发替换原座位区。`
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，先判断原座位区是否最合理，最合理则替换，否则选择更合理空位并保证不拥挤不挡路。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
