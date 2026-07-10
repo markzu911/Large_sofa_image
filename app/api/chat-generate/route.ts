@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import {
   createPlacementGuideFromPlan,
+  describePlacementGuideForPrompt,
   generatePlacementPlanWithGemini,
   generateProductIdentityWithGemini,
   generateImageWithGemini,
@@ -159,6 +160,7 @@ export async function POST(req: Request) {
 
     const placementGuide = placementPlan ? createPlacementGuideFromPlan(placementPlan) : null;
     const placementGuideImage = placementGuide ? renderPlacementGuidePngBase64(placementGuide) : null;
+    const placementGuidePrompt = placementGuide ? describePlacementGuideForPrompt(placementGuide, shotNameForPlan) : '';
     if (placementGuideImage) {
       parts.push({ text: `【自动落位遮罩图 - 内部辅助，不得渲染】红色区域为绝对禁放区，沙发主体任何部分都不能进入；绿色区域为沙发主体目标落位区，沙发中心和主要体量必须落入；绿色箭头表示主坐面/开口侧朝向。${placementGuide?.instruction || ''}` });
       parts.push({ inlineData: { data: placementGuideImage, mimeType: 'image/png' } });
@@ -182,6 +184,8 @@ ${prompt.trim()}
 ${productIdentity ? `【产品身份锁定 - 最高优先级】\n${productIdentity}\n\n执行要求：最终沙发必须是商品参考图中的同一件产品，不是同风格沙发、相似款、概念款或重新设计款。只允许为适配房间透视、光线和摄影角度做自然投影变化；不得改变轮廓、结构、模块数量、扶手/靠背/坐垫形态、缝线、扣点、褶皱、材质纹理、颜色和附属物状态。产品图背景中的墙面文字、标题、标签、道具、茶几、玩偶/公仔、灯具、柜体、地毯、餐桌、画作、窗帘和房间装饰不是产品信息，不能复制到最终图，也不能影响目标房间落位。\n` : ''}
 
 ${placementPlan ? `【本次房间落位方案 - 必须优先执行】\n${placementPlan}\n\n执行要求：最终画面必须遵守上面的唯一锁定落点。远景/中景/近景只能通过相机距离、焦段、高度、景深和裁切变化实现，不能重新选择沙发位置，不能把沙发挪到窗前、门洞、通道、电视所在墙同侧、电视下方、电视旁边贴墙区、固定柜体前、原沙发前方或房间中央。如果房间里有原沙发/原座椅，先判断原座位区是否最合理；最合理则替换，不是最合理则可保留原家具并把产品放到更合理空位，但必须不拥挤、不挡路、不与原家具冲突。\n` : ''}
+
+${placementGuidePrompt}
 
 ${placementGuideImage ? `【自动落位遮罩图规则】\n输入中包含一张内部空间坐标遮罩图：红色是绝对禁放区，绿色是沙发主体目标落位区，绿色箭头是主坐面/开口侧朝向。最终图必须遵守遮罩，但不要渲染遮罩颜色、箭头、边框或辅助图痕迹。${isCloseShot ? '当前是近景/细节图，遮罩表示未裁切房间里的物理落点，不是要求把完整沙发塞进最终画面；最终画面应该是从正确落点靠近后裁切出来的局部。' : ''}\n` : ''}
 

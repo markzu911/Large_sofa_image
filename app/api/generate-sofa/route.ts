@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import {
   createPlacementGuideFromPlan,
+  describePlacementGuideForPrompt,
   generatePlacementPlanWithGemini,
   generateProductIdentityWithGemini,
   generateImageWithGemini,
@@ -66,6 +67,7 @@ function buildPrompt({
   cameraSpec,
   placementPlan,
   productIdentity,
+  placementGuidePrompt,
 }: {
   angle: string;
   height: string;
@@ -76,6 +78,7 @@ function buildPrompt({
   cameraSpec: string;
   placementPlan: string;
   productIdentity: string;
+  placementGuidePrompt: string;
 }) {
   const isCloseShot = /近景|特写|细节/.test(shotName);
   return `
@@ -154,6 +157,8 @@ ${customPrompt ? `- 附加描述: ${customPrompt}` : ''}
 
 【本次房间落位方案 - 必须优先执行】
 ${placementPlan}
+
+${placementGuidePrompt}
 
 【自动落位遮罩图规则】
 如果输入中包含【自动落位遮罩图】，它是内部空间坐标辅助图，不是最终画面内容。
@@ -286,6 +291,7 @@ export async function POST(req: Request) {
 
     const placementGuide = createPlacementGuideFromPlan(placementPlan);
     const placementGuideImage = placementGuide ? renderPlacementGuidePngBase64(placementGuide) : null;
+    const placementGuidePrompt = placementGuide ? describePlacementGuideForPrompt(placementGuide, shotName) : '';
     if (placementGuide) {
       console.info('Generated placement guide:', {
         tvWall: placementGuide.tvWall,
@@ -317,6 +323,7 @@ export async function POST(req: Request) {
               placementHint,
               placementPlan,
               productIdentity,
+              placementGuidePrompt,
             }),
           },
         ],

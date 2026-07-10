@@ -417,6 +417,56 @@ function detectTvWallFromPlan(plan: string): PlacementGuide['tvWall'] {
   return 'unknown';
 }
 
+function parsePlacementGuideJsonFromPlan(plan: string): PlacementGuide | null {
+  const jsonMatch = plan.match(/GUIDE_JSON\s*[:：]\s*(\{[^\n]+\})/i);
+  if (!jsonMatch) return null;
+
+  try {
+    const parsed = JSON.parse(jsonMatch[1]);
+    const tvWall = ['left', 'right', 'back', 'front', 'none', 'unknown'].includes(parsed.tvWall)
+      ? parsed.tvWall
+      : 'unknown';
+    const facing = ['left', 'right', 'up', 'down', 'left-up', 'right-up'].includes(parsed.facing)
+      ? parsed.facing
+      : 'left';
+    const targetZone = parsed.targetZone && typeof parsed.targetZone === 'object'
+      ? normalizePlacementBox({
+          xMin: Number(parsed.targetZone.xMin),
+          yMin: Number(parsed.targetZone.yMin),
+          xMax: Number(parsed.targetZone.xMax),
+          yMax: Number(parsed.targetZone.yMax),
+          reason: parsed.targetZone.reason || 'GUIDE_JSON 目标区',
+        })
+      : null;
+    if (!targetZone || [targetZone.xMin, targetZone.xMax, targetZone.yMin, targetZone.yMax].some(Number.isNaN)) {
+      return null;
+    }
+    const forbiddenZones = Array.isArray(parsed.forbiddenZones)
+      ? parsed.forbiddenZones
+          .map((zone: any) => normalizePlacementBox({
+            xMin: Number(zone.xMin),
+            yMin: Number(zone.yMin),
+            xMax: Number(zone.xMax),
+            yMax: Number(zone.yMax),
+            reason: zone.reason || 'GUIDE_JSON 禁放区',
+          }))
+          .filter((zone: PlacementBox) => ![zone.xMin, zone.xMax, zone.yMin, zone.yMax].some(Number.isNaN))
+      : [];
+
+    return {
+      tvWall,
+      targetZone,
+      forbiddenZones,
+      facing,
+      instruction: typeof parsed.instruction === 'string' && parsed.instruction.trim()
+        ? parsed.instruction.trim()
+        : '严格执行 GUIDE_JSON 中的目标区、禁放区和朝向。',
+    };
+  } catch {
+    return null;
+  }
+}
+
 function extractTargetBoxFromPlan(plan: string): PlacementBox | null {
   const targetSection = plan.match(/(?:唯一锁定落点|执行口令)([\s\S]{0,900})/)?.[1] || plan;
   const xThenY = targetSection.match(/X\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％][\s\S]{0,120}?Y\s*[=≈约:：]*\s*(\d{1,3})(?:\.\d+)?\s*[%％]\s*(?:-|~|至|到|—|–)\s*(\d{1,3})(?:\.\d+)?\s*[%％]/i);
@@ -483,13 +533,14 @@ function fallbackGuideByTvWall(tvWall: PlacementGuide['tvWall']): Pick<Placement
 export function createPlacementGuideFromPlan(placementPlan: string): PlacementGuide | null {
   if (!placementPlan || placementPlan.startsWith('空间落位分析未单独返回')) return null;
 
-  const tvWall = detectTvWallFromPlan(placementPlan);
+  const parsedGuide = parsePlacementGuideJsonFromPlan(placementPlan);
+  const tvWall = parsedGuide?.tvWall || detectTvWallFromPlan(placementPlan);
   const fallback = fallbackGuideByTvWall(tvWall);
-  const parsedTarget = extractTargetBoxFromPlan(placementPlan);
+  const parsedTarget = parsedGuide?.targetZone || extractTargetBoxFromPlan(placementPlan);
   let targetZone = parsedTarget || fallback?.targetZone;
-  let forbiddenZones = fallback?.forbiddenZones || [];
-  let facing = fallback?.facing || 'left';
-  let instruction = fallback?.instruction || '根据绿色目标区放置沙发主体，避开红色禁放区，主坐面朝向房间会客中心。';
+  let forbiddenZones = parsedGuide?.forbiddenZones?.length ? parsedGuide.forbiddenZones : (fallback?.forbiddenZones || []);
+  let facing = parsedGuide?.facing || fallback?.facing || 'left';
+  let instruction = parsedGuide?.instruction || fallback?.instruction || '根据绿色目标区放置沙发主体，避开红色禁放区，主坐面朝向房间会客中心。';
 
   if (!targetZone) return null;
 
@@ -526,6 +577,27 @@ export function createPlacementGuideFromPlan(placementPlan: string): PlacementGu
     facing,
     instruction,
   };
+}
+
+export function describePlacementGuideForPrompt(guide: PlacementGuide, shotName?: string) {
+  const isCloseShot = /近景|特写|细节/.test(shotName || '');
+  const lock = {
+    tvWall: guide.tvWall,
+    targetZone: guide.targetZone,
+    forbiddenZones: guide.forbiddenZones,
+    facing: guide.facing,
+  };
+  return `
+【POSITION_LOCK_JSON - 最高优先级坐标锁】
+${JSON.stringify(lock)}
+执行方式：
+1. 这是最终生图必须遵守的机器坐标锁，所有百分比均基于房间参考图画面，X 从左到右，Y 从上到下。
+2. 产品沙发中心和主体主要体量必须落在 targetZone 内；任何主体主要体量不能进入 forbiddenZones。
+3. facing 是沙发主坐面/开口侧朝向，不是相机朝向。
+4. 远景/中景/近景共用同一个 targetZone 和 facing，不能每个景别重新找地方。
+5. ${guide.instruction}
+${isCloseShot ? '6. 当前是近景/细节：最终画面可以裁切 targetZone 内已落位沙发的局部，但不能把完整沙发搬离 targetZone，也不能让背景暗示沙发位于 forbiddenZones。' : ''}
+`;
 }
 
 const crcTable = (() => {
@@ -746,6 +818,14 @@ export async function generatePlacementPlanWithGemini({
 10. 近景机位：相机如何靠近已合理落位的产品沙发拍扶手、坐垫、靠背、缝线和材质；近景必须是局部裁切，不能展示完整沙发全貌，不能把完整沙发巨大化后重新摆到窗前/房间中央/通道，也不能把原家具当成混乱背景。
 11. 绝对禁止的错误结果：明确写出本图最容易出错的 3-5 种摆法，必须包含“把产品沙发新增到原沙发前方/通道/房间中央，导致空间拥堵或双主沙发冲突”和“为了电商正面图把沙发实际坐向转成朝镜头而背离电视/茶几”。
 12. 非产品阻断清单：列出产品图中出现但不属于沙发本体的所有物件，并写明“最终图不得复制这些物件；最终房间物件只能来自房间参考图或合理保留/移走房间原家具”。
+13. GUIDE_JSON：最后单独输出一行严格 JSON，不要 Markdown，格式必须完全如下：
+GUIDE_JSON: {"tvWall":"left|right|back|front|none|unknown","targetZone":{"xMin":0,"yMin":0,"xMax":0,"yMax":0,"reason":"最终沙发主体目标区"},"forbiddenZones":[{"xMin":0,"yMin":0,"xMax":0,"yMax":0,"reason":"禁放原因"}],"facing":"left|right|up|down|left-up|right-up","instruction":"一句话执行指令"}
+
+GUIDE_JSON 填写规则：
+- 如果电视在画面左侧墙：tvWall 必须是 "left"，targetZone 必须在右半部，建议 xMin>=60, xMax<=94, yMin=46-55, yMax=78-86；forbiddenZones 必须包含 xMin=0,yMin=0,xMax=58,yMax=100；facing 必须是 "left" 或 "left-up"。
+- 如果电视在画面右侧墙：tvWall 必须是 "right"，targetZone 必须在左半部，建议 xMin>=6, xMax<=40, yMin=46-55, yMax=78-86；forbiddenZones 必须包含 xMin=42,yMin=0,xMax=100,yMax=100；facing 必须是 "right" 或 "right-up"。
+- 如果电视在画面后墙/上方背景墙：tvWall 必须是 "back"，targetZone 应在下方观看区，forbiddenZones 包含后墙电视下方区域；facing 使用 "up"。
+- 如果没有明确电视墙，也必须输出最稳定的家具目标区和禁放区，tvWall 用 "none" 或 "unknown"。
 
 决策规则：
 - 优先级：如果房间参考图已有沙发、座椅、贵妃位或明确会客座位，原座位区是最高优先候选区；当它仍是最合理的位置时，用产品沙发替换原座位区，保持墙体依靠关系、主坐面朝向、与茶几/地毯/电视/通道的关系。
@@ -769,6 +849,7 @@ export async function generatePlacementPlanWithGemini({
 - 远景/中景/近景共用同一个“唯一锁定落点”，只能改变相机位置、焦段、高度、景深和裁切，不能改变房间构造，也不能重新选择沙发位置。
 - 拍摄角度不固定，可以正面、侧面、背侧或斜侧；角度只服务于远景/中景/近景区分和产品展示，不能改变唯一锁定落点。
 - 镜头角度自由低于房间底片锁定：可以推近、裁切和微调焦段，但不能改变房间参考图的相机方向、墙体方位、电视所在墙、窗户和固定柜体位置。
+- 物理落位必须与景别无关：当前请求是远景、中景还是近景，都必须输出同一个适用于所有景别的 targetZone；景别只能改变最终画面的裁切和主体占比，不能改变 targetZone。
 - 近景不是完整沙发主图。近景必须裁掉一部分沙发边界，只看局部材质、扶手、坐垫、靠背、缝线或接触阴影；如果画面里能看见完整沙发全貌并占满前景，视为错误。
 - 当商品展示角度与合理落位冲突时，优先合理落位；通过相机移动、焦段、裁切和景深来展示商品。
 - 产品纯净度：最终图不能新增产品参考图中没有的文字、Logo、品牌名、商标、图案、刺绣、标签、徽章或额外抱枕；房间图中的装饰文字、画作、抱枕图案和临时摆件不能转移到产品沙发上。
