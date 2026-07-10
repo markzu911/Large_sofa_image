@@ -782,7 +782,7 @@ export default function App() {
     // Initialize timers and logs
     setElapsedTime(0);
     setProgressPercent(0);
-    setActiveLogs(['[系统] 🚀 启动空间对齐数字孪生合成引擎...']);
+    setActiveLogs(['[启动] 启动空间对齐合成流程...']);
 
     const currentPreset = SHOT_PRESETS.find(p => p.id === distance) || SHOT_PRESETS[1];
     const startTime = Date.now();
@@ -853,7 +853,7 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，先判断原座位区是否最合理，最合理则替换，否则选择更合理空位并保证不拥挤不挡路。电视在左墙则沙发中心应在右半区并朝左，电视在右墙则在左半区并朝右，电视在后墙则在下方观看区并朝后墙；禁止电视同侧、电视下方和电视旁同墙摆放。`
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo。生成前只抠取产品图里的沙发本体，产品图中的茶几、玩偶/公仔、灯、柜体、地毯、餐桌、画作、窗帘、绿植、墙面、文字和水印都不是产品，也不能复制到房间或影响落位。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，先判断原座位区是否最合理，最合理则替换，否则选择更合理空位并保证不拥挤不挡路。电视在左墙则沙发中心应避开左半区并落在右半区/右下/中下观看区且朝左，电视在右墙则避开右半区并落在左半区/左下/中下观看区且朝右，电视在后墙则在下方观看区并朝后墙；禁止电视同侧、电视下方和电视旁同墙摆放。拍摄角度可以正面、侧面、背侧或斜侧，但只能移动相机，不能为了商品正面改变沙发物理坐向。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
@@ -1176,7 +1176,7 @@ export default function App() {
             userId,
             toolId,
           },
-          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n商品约束：如果有沙发商品图，必须把它作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用参考图里的非产品信息。\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。`,
+          prompt: `${activePrompt || '生成高端沙发电商场景图'}\n商品约束：如果有沙发商品图，必须把它作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo。只抠取沙发本体，产品图里的茶几、玩偶/公仔、灯、柜体、地毯、餐桌、画作、窗帘、绿植、墙面、文字、水印和其他非沙发物件不能复制到目标房间，也不能影响落位。\n落位约束：不使用前端预览坐标，必须根据房间图自动识别最合理座位区；有电视/媒体墙时沙发应在电视对侧或斜对侧，主坐面朝电视，禁止电视同侧、电视下方和电视旁同墙摆放。\n镜头要求：${activePreset.name}，${activePreset.promptGuide}\n摄影机参数：${activePreset.angle}，${activePreset.height}。`,
           productImage,
           roomImage,
           aspectRatio: '4:3',
@@ -2082,7 +2082,7 @@ export default function App() {
                       {activeLogs.map((log, idx) => (
                         <div key={idx} className="flex gap-2 items-start animate-fade-in">
                           <span className="text-[#B8975A] select-none shrink-0">&gt;</span>
-                          <span className={log.includes('[完成]') || log.includes('[完成] ') ? 'text-emerald-400 font-bold' : log.includes('[系统]') ? 'text-blue-400' : 'text-[#D6D3D1]'}>
+                          <span className={log.includes('[完成]') || log.includes('[完成] ') ? 'text-emerald-400 font-bold' : log.includes('[启动]') ? 'text-blue-400' : 'text-[#D6D3D1]'}>
                             {log}
                           </span>
                         </div>
