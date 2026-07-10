@@ -853,7 +853,7 @@ export default function App() {
         imageSize: resolution,
         shotName: currentPreset.name,
         cameraSpec: `${currentPreset.angle}，${currentPreset.height}`,
-        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，先判断原座位区是否最合理，最合理则替换，否则选择更合理空位并保证不拥挤不挡路。`
+        customPrompt: `${currentPreset.promptGuide} 高清还原等级: ${resolution}。商品沙发必须作为同一件产品100%还原，不能改款、改结构、加抱枕、加文字、加Logo或套用房间/产品背景里的非产品信息。不使用前端预览坐标，必须自动判断最合理的沙发座位区；如果房间原图已有沙发或座椅，先判断原座位区是否最合理，最合理则替换，否则选择更合理空位并保证不拥挤不挡路。电视在左墙则沙发中心应在右半区并朝左，电视在右墙则在左半区并朝右，电视在后墙则在下方观看区并朝后墙；禁止电视同侧、电视下方和电视旁同墙摆放。`
       };
 
       // Attempt to call the custom specific endpoint first to avoid global SaaS platform interceptors/conflicts on '/api/generate'
