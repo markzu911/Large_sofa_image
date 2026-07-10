@@ -447,18 +447,18 @@ function extractTargetBoxFromPlan(plan: string): PlacementBox | null {
 function fallbackGuideByTvWall(tvWall: PlacementGuide['tvWall']): Pick<PlacementGuide, 'targetZone' | 'forbiddenZones' | 'facing' | 'instruction'> | null {
   if (tvWall === 'left') {
     return {
-      targetZone: { xMin: 52, yMin: 48, xMax: 90, yMax: 84, reason: '左墙电视的对侧/斜对侧观看区' },
-      forbiddenZones: [{ xMin: 0, yMin: 0, xMax: 46, yMax: 100, reason: '左墙电视同侧、电视下方和电视旁边区域禁放' }],
+      targetZone: { xMin: 60, yMin: 46, xMax: 94, yMax: 84, reason: '左墙电视的对侧/斜对侧观看区' },
+      forbiddenZones: [{ xMin: 0, yMin: 0, xMax: 58, yMax: 100, reason: '左墙电视同侧、电视下方和电视旁边区域禁放' }],
       facing: 'left',
-      instruction: '电视在画面左侧墙：沙发主体必须远离左墙电视，落在右半部/右下/中下观看区，主坐面朝左或左上看电视。',
+      instruction: '电视在画面左侧墙：沙发主体必须远离左墙电视，整体落在右半部/右下/中下观看区，主坐面朝左或左上看电视；沙发任何主要体量都不能压到左半区。',
     };
   }
   if (tvWall === 'right') {
     return {
-      targetZone: { xMin: 10, yMin: 48, xMax: 48, yMax: 84, reason: '右墙电视的对侧/斜对侧观看区' },
-      forbiddenZones: [{ xMin: 54, yMin: 0, xMax: 100, yMax: 100, reason: '右墙电视同侧、电视下方和电视旁边区域禁放' }],
+      targetZone: { xMin: 6, yMin: 46, xMax: 40, yMax: 84, reason: '右墙电视的对侧/斜对侧观看区' },
+      forbiddenZones: [{ xMin: 42, yMin: 0, xMax: 100, yMax: 100, reason: '右墙电视同侧、电视下方和电视旁边区域禁放' }],
       facing: 'right',
-      instruction: '电视在画面右侧墙：沙发主体必须远离右墙电视，落在左半部/左下/中下观看区，主坐面朝右或右上看电视。',
+      instruction: '电视在画面右侧墙：沙发主体必须远离右墙电视，整体落在左半部/左下/中下观看区，主坐面朝右或右上看电视；沙发任何主要体量都不能压到右半区。',
     };
   }
   if (tvWall === 'back') {
@@ -494,13 +494,13 @@ export function createPlacementGuideFromPlan(placementPlan: string): PlacementGu
   if (!targetZone) return null;
 
   targetZone = normalizePlacementBox(targetZone);
-  if (tvWall === 'left' && targetZone.xMin < 50 && fallback) {
+  if (tvWall === 'left' && (targetZone.xMin < 58 || (targetZone.xMin + targetZone.xMax) / 2 < 66) && fallback) {
     targetZone = fallback.targetZone;
     forbiddenZones = fallback.forbiddenZones;
     facing = fallback.facing;
     instruction = fallback.instruction;
   }
-  if (tvWall === 'right' && targetZone.xMax > 50 && fallback) {
+  if (tvWall === 'right' && (targetZone.xMax > 42 || (targetZone.xMin + targetZone.xMax) / 2 > 34) && fallback) {
     targetZone = fallback.targetZone;
     forbiddenZones = fallback.forbiddenZones;
     facing = fallback.facing;
@@ -742,7 +742,7 @@ export async function generatePlacementPlanWithGemini({
    - 原家具处理要求，例如“替换原沙发/保留原单椅/移走茶几/轻微调整边几”；如果选择新增到其他区域，必须说明与原沙发、茶几、电视、通道的关系，不能新增到原沙发前方或房间中央造成拥堵。
 8. 远景机位：相机如何后退展示空间，沙发占比小但仍在同一锁定落点。
 9. 中景机位：相机如何靠近成为电商主图，沙发占比适中但仍在同一锁定落点；不能为了主图把沙发旋转朝向镜头或拉到画面前景。
-10. 近景机位：相机如何靠近已合理落位的产品沙发拍扶手、坐垫、靠背、缝线和材质；可以自然裁切局部，但不能把完整沙发巨大化后重新摆到窗前/房间中央/通道，也不能把原家具当成混乱背景。
+10. 近景机位：相机如何靠近已合理落位的产品沙发拍扶手、坐垫、靠背、缝线和材质；近景必须是局部裁切，不能展示完整沙发全貌，不能把完整沙发巨大化后重新摆到窗前/房间中央/通道，也不能把原家具当成混乱背景。
 11. 绝对禁止的错误结果：明确写出本图最容易出错的 3-5 种摆法，必须包含“把产品沙发新增到原沙发前方/通道/房间中央，导致空间拥堵或双主沙发冲突”和“为了电商正面图把沙发实际坐向转成朝镜头而背离电视/茶几”。
 12. 非产品阻断清单：列出产品图中出现但不属于沙发本体的所有物件，并写明“最终图不得复制这些物件；最终房间物件只能来自房间参考图或合理保留/移走房间原家具”。
 
@@ -767,6 +767,7 @@ export async function generatePlacementPlanWithGemini({
 - 体量控制：按房间透视决定沙发真实尺寸，不能因为中景/近景把完整大沙发放大到占据房间主要通道；中景通过相机靠近和裁切实现，物理落点和尺寸不变。
 - 远景/中景/近景共用同一个“唯一锁定落点”，只能改变相机位置、焦段、高度、景深和裁切，不能改变房间构造，也不能重新选择沙发位置。
 - 拍摄角度不固定，可以正面、侧面、背侧或斜侧；角度只服务于远景/中景/近景区分和产品展示，不能改变唯一锁定落点。
+- 近景不是完整沙发主图。近景必须裁掉一部分沙发边界，只看局部材质、扶手、坐垫、靠背、缝线或接触阴影；如果画面里能看见完整沙发全貌并占满前景，视为错误。
 - 当商品展示角度与合理落位冲突时，优先合理落位；通过相机移动、焦段、裁切和景深来展示商品。
 - 产品纯净度：最终图不能新增产品参考图中没有的文字、Logo、品牌名、商标、图案、刺绣、标签、徽章或额外抱枕；房间图中的装饰文字、画作、抱枕图案和临时摆件不能转移到产品沙发上。
 - 产品图非沙发物件绝不参与落位：产品图里的茶几、玩偶/公仔、灯、墙柜、地毯、餐桌、画作、背景墙、窗帘、装饰摆件、水印和界面元素，都不是空间参考，不能被带到目标房间，也不能作为“产品配套”一起移动。
